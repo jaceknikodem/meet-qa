@@ -1,0 +1,30 @@
+# Common
+node_modules/
+.DS_Store
+.env
+.env.*
+!.env.example
+*.log
+
+# Build Outputs
+dist/
+dist-ssr/
+*.local
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Tauri / Rust
+src-tauri/target/
+src-tauri/binaries/
+target/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary Files
+.temp/
+tmp/
