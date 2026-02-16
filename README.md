@@ -11,9 +11,9 @@ Stealth Sidekick works as a silent listener. It maintains a **45-second rolling 
 ### Key Logic:
 1.  **Always Listening**: Starts capturing system audio immediately on launch (Mono 16kHz). Audio is stored in a circular buffer in memory—it is never saved permanently to disk and is purged every 45 seconds.
 2.  **Pre-emptive Transcription**: To ensure sub-second response times, the app transcribes the audio buffer in the background every 5 seconds.
-3.  **On-Demand Intelligence**: LLM reasoning and streaming happen when triggered via hotkey or automatically when a question is detected.
-4.  **Proactive Detection (Optional)**: If configured with a local Ollama model, the app continuously scans the transcript for questions and pops the HUD automatically.
-5.  **Screen-Share Stealth**: The UI is configured to be hidden from screen capture and stays "Always on Top" for your eyes only.
+3.  **On-Demand Intelligence**: LLM reasoning and streaming happen when triggered via hotkey.
+4.  **Screen-Share Stealth**: The UI is hidden from screen capture and stays "Always on Top" for your eyes only.
+5.  **Draggable HUD**: The interface can be moved anywhere on your screen by dragging the HUD box.
 
 ---
 
@@ -24,74 +24,79 @@ Stealth Sidekick works as a silent listener. It maintains a **45-second rolling 
 | **Framework** | Tauri v2 (Rust + React + Tailwind) |
 | **Audio Capture** | `cpal` (Rust) tapping into BlackHole 2ch |
 | **Transcription** | `whisper-rs` (Native Rust bindings to `whisper.cpp`) |
-| **Intelligence** | Gemini 2.5 Flash / Ollama (Local Detection) |
+| **Intelligence** | Gemini 1.5 Flash |
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Development
 
 ### Prerequisites
 
-1.  **Audio Routing**: Install [BlackHole 2ch](https://github.com/ExistentialAudio/BlackHole) and set it as your system output (or use a Multi-Output Device) so the app can "hear" the meeting.
-2.  **Build Tools**: Ensure `cmake` is installed (required to compile the native Whisper bindings).
-3.  **Rust**: Ensure `cargo` is installed and in your `$PATH`.
+1.  **Audio Routing**: Install [BlackHole 2ch](https://github.com/ExistentialAudio/BlackHole) and set it as your system output.
+2.  **Build Tools**: Install `cmake` (`brew install cmake`).
+3.  **Rust**: Ensure `cargo` is installed.
 
-### Configuration
-
-Create a `.env` file in the root directory:
-
-```env
-GEMINI_API_KEY=your_gemini_api_key_here
-GEMINI_MODEL=gemini-2.5-flash-lite
-WHISPER_GGML_PATH=/path/to/your/ggml-small-q5_1.bin
-BUFFER_DURATION_SECS=45
-GLOBAL_HOTKEY=Command+Shift+P
-DETECT_QUESTION_MODEL=llama3 # Optional: Set to enable continuous Ollama assessment
-DETECT_QUESTION_MIN_CHARS=50 # Optional: Min chars before triggering Ollama
-```
-
-### Installation & Run
+### Setup
 
 ```bash
-# Install frontend dependencies
+# Install dependencies
 npm install
 
 # Run in development mode
-npm run tauri dev
+just dev
 ```
 
----
-
-## ⌨️ Global Hotkey
-
--   **`Cmd + Shift + P`**:
-    -   **Toggle Visibility**: Shows/Hides the transparent HUD.
-    -   **Trigger Process**: When shown, it immediately pulls the latest transcription (often hitting a pre-emptive cache) and streams an AI suggestion in real-time.
+In development (`just dev`), the app uses the local `.env` and `prompt.txt` in the project root.
 
 ---
 
-## 🤖 Continuous Detection (Optional)
+## 🏗 Production Build & Release
 
-If you have [Ollama](https://ollama.com) installed, Stealth Sidekick can proactively "listen" for questions.
+### Compiling for Mac
+To create a downloadable `.dmg` installer:
 
-1.  **Local Scanning**: A background thread sends the latest transcript to your local Ollama model (e.g., `llama3`) every 5 seconds.
-2.  **Auto-HUD**: If Ollama detects a question or a request for help, the HUD will **automatically pop up** and trigger a Gemini analysis.
-3.  **Manual Close**: Use the `X` button (visible on hover) or the global hotkey to dismiss the HUD.
+```bash
+just build
+```
 
-### Configuration
-Enable this by adding `DETECT_QUESTION_MODEL` to your `.env`:
--   `DETECT_QUESTION_MODEL=llama3`: The model name to use for detection.
--   `DETECT_QUESTION_MIN_CHARS=50`: Minimum transcript length before starting detection.
+This generates a production-ready installer at:  
+`src-tauri/target/release/bundle/dmg/Stealth Sidekick_0.1.0_aarch64.dmg`
+
+### Manual Release on GitHub
+1.  Open your repository on GitHub.
+2.  Go to **Releases** -> **Draft a new release**.
+3.  Upload the `.dmg` from the path above as a binary asset.
+
+---
+
+## ⚙️ Configuration (User Settings)
+
+In the production app, configuration is managed in the standard macOS Application Support folder to keep it separate from the app binary.
+
+### Opening Settings
+Hover over the HUD and click the **📁 Folder Icon**. This opens:  
+`~/Library/Application Support/Stealth Sidekick/`
+
+### Customizable Files
+1.  **.env**: Add your credentials:
+    -   `GEMINI_API_KEY`: Your key from [AI Studio](https://aistudio.google.com/).
+    -   `WHISPER_GGML_PATH`: Path to your Whisper `.bin` model.
+    -   `GLOBAL_HOTKEY`: Default is `Command+Shift+K`.
+2.  **prompt.txt**: Edit this to change how the AI Sidekick responds.
+3.  **logs/**: Every transcript/response pair is saved here automatically as a Markdown file.
+
+---
+
+## ⌨️ Usage
+
+-   **`Cmd + Shift + K`**: Toggle the HUD visibility.
+-   **🔴 Power Button**: Closes the application completely (useful for updating config).
+-   **📁 Folder Button**: Opens the configuration directory in Finder.
+-   **Handle**: Use the HUD body to drag the window around.
 
 ---
 
 ## 🛡 Privacy
 
--   **Zero Logs (Audio)**: Audio is kept in a volatile RAM buffer. Once purged, it is gone forever.
+-   **Zero Logs (Audio)**: Audio is kept in a volatile RAM buffer and purged every 45 seconds.
 -   **Local First**: Transcription happens natively on your machine using Whisper. Only the resulting text snippet is sent to the Gemini API for analysis.
-
----
-
-## 📂 Session Logging
-
-The app automatically saves every exchange (Transcript + AI Response) to timestamped Markdown files in the `logs/` directory. Files are named by date (e.g., `logs/2026-02-16_15-34.md`), providing a persistent searchable history of your meetings.

@@ -20,20 +20,27 @@ pub struct Config {
 
 impl Config {
     pub fn get_app_data_dir() -> std::path::PathBuf {
-        let path = tauri::utils::platform::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+        // In development, use the project root (current directory)
+        #[cfg(debug_assertions)]
+        return std::env::current_dir().unwrap_or_default();
 
-        // On macOS, if we're in a bundle, the AppData is better for config
-        #[cfg(target_os = "macos")]
-        if let Some(home_dir) = dirs::home_dir() {
-            let mut path: std::path::PathBuf = home_dir;
-            path.push("Library/Application Support/Stealth Sidekick");
-            return path;
+        #[cfg(not(debug_assertions))]
+        {
+            let path = tauri::utils::platform::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+
+            // On macOS, if we're in a bundle, the AppData is better for config
+            #[cfg(target_os = "macos")]
+            if let Some(home_dir) = dirs::home_dir() {
+                let mut path: std::path::PathBuf = home_dir;
+                path.push("Library/Application Support/Stealth Sidekick");
+                return path;
+            }
+
+            path
         }
-
-        path
     }
 
     pub fn load() -> Result<Self, String> {
