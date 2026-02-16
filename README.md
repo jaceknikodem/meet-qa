@@ -9,11 +9,11 @@ A lightweight, non-intrusive macOS utility designed to provide real-time AI assi
 Stealth Sidekick works as a silent listener. It maintains a **45-second rolling buffer** of your system audio in RAM. When you're stuck, confused, or just need a quick fact-check, one global hotkey triggers an ultra-fast AI response via a translucent HUD.
 
 ### Key Logic:
-1.  **Always Listening**: Starts capturing system audio immediately on launch (Mono 16kHz). Audio is stored in a circular buffer in memory—it is never saved permanently to disk and is purged every 45 seconds.
-2.  **Pre-emptive Transcription**: To ensure sub-second response times, the app transcribes the audio buffer in the background every 5 seconds.
-3.  **On-Demand Intelligence**: LLM reasoning and streaming happen when triggered via hotkey.
-4.  **Screen-Share Stealth**: The UI is hidden from screen capture and stays "Always on Top" for your eyes only.
-5.  **Draggable HUD**: The interface can be moved anywhere on your screen by dragging the HUD box.
+1.  **Always Listening**: Starts capturing system audio immediately on launch (Mono 16kHz) via `cpal`. Audio is kept in RAM and purged every 45 seconds.
+2.  **Pre-emptive Transcription**: To ensure sub-second response times, the app transcribes the audio buffer in the background every 5 seconds using `whisper-rs`.
+3.  **Controlled Intelligence**: Uses Gemini 1.5 Flash with **Controlled Generation (Strict JSON)**. The AI is forced to return a structured confidence score alongside its answer.
+4.  **Confidence Filtering**: Responses with a confidence score below **0.5** are automatically rejected ("Nothing interesting here") to prevent AI hallucinations from conversational noise.
+5.  **Screen-Share Stealth**: The UI is hidden from screen capture using native macOS APIs.
 
 ---
 
@@ -24,7 +24,7 @@ Stealth Sidekick works as a silent listener. It maintains a **45-second rolling 
 | **Framework** | Tauri v2 (Rust + React + Tailwind) |
 | **Audio Capture** | `cpal` (Rust) tapping into BlackHole 2ch |
 | **Transcription** | `whisper-rs` (Native Rust bindings to `whisper.cpp`) |
-| **Intelligence** | Gemini 1.5 Flash |
+| **Intelligence** | Gemini 1.5 Flash (via Structured JSON Schema) |
 
 ---
 
@@ -43,10 +43,10 @@ Stealth Sidekick works as a silent listener. It maintains a **45-second rolling 
 npm install
 
 # Run in development mode
-just dev
+npm run dev
 ```
 
-In development (`just dev`), the app uses the local `.env` and `prompt.txt` in the project root.
+In development (`npm run dev`), the app uses the local `.env` and `prompt.txt` in the project root.
 
 ---
 
@@ -56,7 +56,7 @@ In development (`just dev`), the app uses the local `.env` and `prompt.txt` in t
 To create a downloadable `.dmg` installer:
 
 ```bash
-just build
+npm run tauri build
 ```
 
 This generates a production-ready installer at:  
@@ -82,8 +82,8 @@ Hover over the HUD and click the **📁 Folder Icon**. This opens:
     -   `GEMINI_API_KEY`: Your key from [AI Studio](https://aistudio.google.com/).
     -   `WHISPER_GGML_PATH`: Path to your Whisper `.bin` model.
     -   `GLOBAL_HOTKEY`: Default is `Command+Shift+K`.
-2.  **prompt.txt**: Edit this to change how the AI Sidekick responds.
-3.  **logs/**: Every transcript/response pair is saved here automatically as a Markdown file.
+2.  **prompt.txt**: Edit the "System Instructions" for the AI Sidekick. 
+3.  **logs/**: Every transcript/response pair is saved here as Markdown, including confidence scores and rejection status.
 
 ---
 
@@ -98,5 +98,6 @@ Hover over the HUD and click the **📁 Folder Icon**. This opens:
 
 ## 🛡 Privacy
 
--   **Zero Logs (Audio)**: Audio is kept in a volatile RAM buffer and purged every 45 seconds.
--   **Local First**: Transcription happens natively on your machine using Whisper. Only the resulting text snippet is sent to the Gemini API for analysis.
+-   **Zero Logs (Audio)**: Audio is never saved to disk and is purged from RAM every 45 seconds.
+-   **Local First**: Transcription happens natively on your machine using Whisper. 
+-   **Strict Data Extraction**: Only transcribed text snippets are sent to Gemini, governed by a strict JSON schema to ensure the AI doesn't drift into irrelevant conversation.

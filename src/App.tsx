@@ -1,7 +1,28 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { parseGeminiStreamChunk } from "./utils/gemini";
+import { parseGeminiStreamChunk, extractStructuredData, StructuredResponse } from "./utils/gemini";
+
+const MIN_CONFIDENCE = 0.5;
+
+const RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    cleaned_question: {
+      type: "string",
+      description: "The core question or claim extracted from the transcript, cleaned of filler words."
+    },
+    answer: {
+      type: "string",
+      description: "A concise, direct answer or verification."
+    },
+    confidence: {
+      type: "number",
+      description: "How confident you are that there is a meaningful question or claim worth answering (0.0 to 1.0)."
+    }
+  },
+  required: ["cleaned_question", "answer", "confidence"]
+};
 
 interface AppConfig {
   api_key: string;
@@ -13,7 +34,7 @@ interface AppConfig {
 
 function App() {
   const [transcript, setTranscript] = useState("");
-  const [response, setResponse] = useState("");
+  const [response, setResponse] = useState<StructuredResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -36,7 +57,7 @@ function App() {
       setIsLoading(true);
       setError("");
       setTranscript("Listening...");
-      setResponse("");
+      setResponse(null);
 
       try {
         console.log("Process triggered");
@@ -49,13 +70,13 @@ function App() {
         setTranscript(text);
 
         if (!text || !text.trim()) {
-          setResponse("No speech detected.");
+          setResponse({ cleaned_question: "", answer: "No speech detected.", confidence: 0 });
           setIsLoading(false);
           return;
         }
 
         if (text.trim().length < 25) {
-          setResponse("Transcript too short for meaningful analysis.");
+          setResponse({ cleaned_question: "", answer: "Transcript too short for meaningful analysis.", confidence: 0 });
           setIsLoading(false);
           return;
         }
@@ -64,29 +85,33 @@ function App() {
         const activeConfig = config || await invoke<AppConfig>("get_config");
         if (!config) setConfig(activeConfig);
 
-        setResponse("");
+        setResponse(null);
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeConfig.model}:streamGenerateContent?alt=sse&key=${activeConfig.api_key}`;
 
         const prompt = `${activeConfig.prompt}\n\nTranscript:\n${text}`;
 
-        const response = await fetch(geminiUrl, {
+        const geminiResponse = await fetch(geminiUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }]
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              response_mime_type: "application/json",
+              response_schema: RESPONSE_SCHEMA,
+            }
           })
         });
 
-        if (!response.ok) {
-          const errData = await response.json();
+        if (!geminiResponse.ok) {
+          const errData = await geminiResponse.json();
           throw new Error(errData.error?.message || "Gemini API error");
         }
 
-        const reader = response.body?.getReader();
+        const reader = geminiResponse.body?.getReader();
         if (!reader) throw new Error("No response body");
 
         const decoder = new TextDecoder();
-        let fullAnswer = "";
+        let fullRawResponse = "";
         let buffer = "";
         let hasReceivedFirstChunk = false;
 
@@ -108,8 +133,9 @@ function App() {
           for (const line of lines) {
             const textPart = parseGeminiStreamChunk(line);
             if (textPart) {
-              fullAnswer += textPart;
-              setResponse(fullAnswer);
+              fullRawResponse += textPart;
+              const structured = extractStructuredData(fullRawResponse);
+              setResponse(structured);
             }
           }
         }
@@ -117,13 +143,22 @@ function App() {
         const endTime = performance.now();
         console.log(`[Latency] Full response took: ${(endTime - startTime).toFixed(0)}ms`);
 
-        // 3. Log to file (in background)
-        invoke("log_session", { transcript: text, answer: fullAnswer }).catch(console.error);
+        // Final UI and Log processing
+        const finalStructured = extractStructuredData(fullRawResponse);
+        let logText = "";
+
+        if (finalStructured.confidence < MIN_CONFIDENCE) {
+          logText = `[REJECTED] Confidence ${finalStructured.confidence.toFixed(2)} < ${MIN_CONFIDENCE}\nQ: ${finalStructured.cleaned_question}\nA: ${finalStructured.answer}`;
+        } else {
+          logText = `Q: ${finalStructured.cleaned_question}\nA: ${finalStructured.answer}\nConfidence: ${finalStructured.confidence.toFixed(2)}`;
+        }
+
+        invoke("log_session", { transcript: text, answer: logText }).catch(console.error);
 
       } catch (err: any) {
         console.error(err);
         setError(err.toString());
-        setResponse("Error occurred.");
+        setResponse({ cleaned_question: "", answer: "Error occurred.", confidence: 0 });
       } finally {
         setIsLoading(false);
       }
@@ -132,7 +167,7 @@ function App() {
     return () => {
       unlistenPromise.then(f => f());
     };
-  }, [config]);
+  }, [config, response]);
 
   return (
     <div
@@ -146,32 +181,24 @@ function App() {
       >
         {/* Controls */}
         <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
-          {/* Settings / Files Button */}
           <button
             onClick={() => invoke("open_config_dir").catch(console.error)}
             className="p-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/40 hover:text-white transition-all"
             aria-label="Open Config Folder"
-            title="Edit Config & Prompt"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
           </button>
-
-          {/* Hide Window Button */}
           <button
             onClick={handleClose}
             className="p-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/40 hover:text-white transition-all"
             aria-label="Hide"
-            title="Hide Window (Use hotkey to show)"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
           </button>
-
-          {/* Quit Button */}
           <button
             onClick={() => invoke("quit_app")}
             className="p-2 rounded-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 hover:text-red-300 transition-all"
             aria-label="Quit"
-            title="Quit Application"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
           </button>
@@ -192,63 +219,61 @@ function App() {
 
         {/* Content Area */}
         <div className="space-y-4">
-          {/* Setup Guide / Error State */}
           {config?.error && (
-            <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl space-y-3">
-              <div className="flex items-center gap-2 text-blue-400 font-bold text-xs uppercase tracking-wider">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-                Setup Required
-              </div>
-              <p className="text-sm text-gray-300 leading-relaxed">
-                To use Stealth Sidekick, you need to configure your <code className="text-blue-300">.env</code> file:
-              </p>
-              <ol className="text-xs text-gray-400 space-y-2 list-decimal list-inside">
-                <li>Click the folder icon above.</li>
-                <li>Edit <code className="text-white">.env</code> in TextEdit.</li>
-                <li>Add your <code className="text-white">GEMINI_API_KEY</code>.</li>
-                <li>Add <code className="text-white">WHISPER_GGML_PATH</code>.</li>
-                <li><strong>Quit and restart</strong> the application.</li>
-              </ol>
-              <div className="text-[10px] text-gray-500 border-t border-white/5 pt-2">
-                <div className="font-bold mb-1">LOCATION:</div>
-                <div className="break-all font-mono opacity-80">{config.error}</div>
-              </div>
+            <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl space-y-3 font-mono text-xs">
+              <div className="text-blue-400 font-bold uppercase tracking-wider">Setup Required</div>
+              <p className="text-gray-300">Check .env in {config.error}</p>
             </div>
           )}
 
-          {/* Transcript */}
+          {/* Transcript Snippet */}
           {transcript && !config?.error && (
-            <div className="p-3 bg-white/5 rounded-lg border border-white/5">
-              <div className="text-xs text-white/40 mb-1 uppercase tracking-wider">Transcript</div>
-              <p className="text-sm text-gray-300 italic leading-relaxed max-h-32 overflow-y-auto">
-                "{transcript}"
-              </p>
+            <div className="p-2 bg-white/5 rounded border border-white/5">
+              <p className="text-[10px] text-gray-400 italic truncate italic">"{transcript}"</p>
             </div>
           )}
 
-          {/* Response */}
+          {/* Structured Response with Confidence Logic */}
           {!config?.error && (
             <div className="p-1">
               {!response && !isLoading && !transcript && (
                 <div className="text-center text-gray-500 py-8 text-sm">
-                  Press <kbd className="bg-white/10 px-2 py-1 rounded text-white font-mono">{config?.global_hotkey || "Cmd+Shift+K"}</kbd> to activate
+                  Press <kbd className="bg-white/10 px-2 py-1 rounded text-white font-mono">{config?.global_hotkey || "Cmd+Shift+K"}</kbd>
                 </div>
               )}
 
               {(response || isLoading) && (
-                <p className={`text-lg font-medium leading-relaxed ${response ? 'text-white' : 'text-gray-400'}`}>
-                  {response || "Processing..."}
-                </p>
+                <div className="space-y-3">
+                  {response && response.confidence < MIN_CONFIDENCE ? (
+                    <div className="py-4 text-center space-y-2">
+                      <p className="text-gray-500 font-medium">Acked, but no triggers found</p>
+                      <p className="text-[10px] text-gray-600 font-mono">
+                        Confidence: {response.confidence.toFixed(2)} / Threshold: {MIN_CONFIDENCE}
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <p className={`text-lg font-medium leading-relaxed ${response?.answer ? 'text-white' : 'text-gray-400'}`}>
+                        {response?.answer || "Processing..."}
+                      </p>
+                      {response?.confidence ? (
+                        <div className="flex justify-end pt-1">
+                          <span className="text-[9px] text-white/20 font-mono uppercase tracking-widest">
+                            Match: {(response.confidence * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
+                </div>
               )}
             </div>
           )}
         </div>
 
-        {/* Error Display */}
         {error && (
-          <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-3">
-            <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-            <span className="text-red-200 text-xs font-mono break-all">{error}</span>
+          <div className="mt-4 p-2 bg-red-500/10 border border-red-500/20 rounded text-[10px] text-red-300 font-mono break-all">
+            {error}
           </div>
         )}
       </div>
