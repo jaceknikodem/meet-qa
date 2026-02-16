@@ -18,12 +18,19 @@ fn hide_window(window: tauri::Window) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn quit_app(app_handle: tauri::AppHandle) {
+    app_handle.exit(0);
+}
+
+#[tauri::command]
 fn log_session(
     transcript: String,
     answer: String,
     state: tauri::State<SessionState>,
 ) -> Result<(), String> {
-    let logs_dir = std::env::current_dir().unwrap_or_default().join("logs");
+    let mut logs_dir = Config::get_app_data_dir();
+    logs_dir.push("logs");
+    
     if !logs_dir.exists() {
         std::fs::create_dir_all(&logs_dir).map_err(|e| e.to_string())?;
     }
@@ -48,6 +55,32 @@ fn log_session(
 }
 
 #[tauri::command]
+fn open_config_dir() -> Result<(), String> {
+    let config_dir = Config::get_app_data_dir();
+    if !config_dir.exists() {
+        std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&config_dir)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(&config_dir)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 fn get_config(config: tauri::State<Config>) -> Config {
     config.inner().clone()
 }
@@ -57,33 +90,28 @@ use tauri_plugin_global_shortcut::{Shortcut, ShortcutState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Load environment variables from .env file
-    // We try to find it in the current dir or parent dir (since we're likely in src-tauri)
-    if let Ok(cwd) = std::env::current_dir() {
-        let mut path = cwd.clone();
-        loop {
-            let env_path = path.join(".env");
-            if env_path.exists() {
-                dotenvy::from_path(env_path).ok();
-                break;
-            }
-            if !path.pop() {
-                // Fallback to standard search if we hit root
-                dotenvy::dotenv().ok();
-                break;
-            }
-        }
-    } else {
-        dotenvy::dotenv().ok();
-    }
+    // Config::load now handles searching for .env in the right places
 
-    // Load and validate config
-    let config = Config::load().expect("Failed to load configuration");
+    // Load and validate config (don't expect anymore)
+    let config = Config::load().unwrap_or_else(|e| {
+         let c = Config {
+            gemini_api_key: "".to_string(),
+            gemini_model: "gemini-1.5-flash".to_string(),
+            global_hotkey: "Command+Shift+K".to_string(),
+            buffer_duration_secs: 45,
+            whisper_ggml_path: "".to_string(),
+            prompt: "".to_string(),
+            detect_question_model: None,
+            detect_question_min_chars: 50,
+            error: Some(e),
+         };
+         c
+    });
 
     let hotkey_str = &config.global_hotkey;
     let hotkey = hotkey_str
         .parse::<Shortcut>()
-        .expect("Failed to parse global shortcut");
+        .unwrap_or_else(|_| "Command+Shift+K".parse().unwrap());
 
     let session_filename = Local::now().format("%Y-%m-%d_%H-%M.md").to_string();
 
@@ -94,16 +122,33 @@ pub fn run() {
             filename: session_filename,
         })
         .setup(move |app| {
-            // Initialize audio state with AppHandle
-            let audio_state = audio::AudioState::new(&config, app.handle().clone())
-                .expect("Failed to initialize audio capture");
-            app.manage(audio_state);
+            // Initialize audio state with AppHandle (don't expect)
+            match audio::AudioState::new(&config, app.handle().clone()) {
+                Ok(audio_state) => {
+                    app.manage(audio_state);
+                }
+                Err(e) => {
+                    eprintln!("Failed to initialize audio capture: {:?}", e);
+                }
+            }
 
             #[cfg(target_os = "macos")]
             if let Some(window) = app.get_webview_window("main") {
                 window.set_content_protected(true)?;
+                
+                // If there's an error, show the window immediately so the user knows what to do
+                if config.error.is_some() {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
             }
             Ok(())
+        })
+        // Handle Dock clicks / Re-activation
+        .on_window_event(|_window, event| {
+            if let tauri::WindowEvent::Focused(true) = event {
+                // Focus event on macOS often correlates with dock clicks if hidden
+            }
         })
         .plugin({
             let builder = tauri_plugin_global_shortcut::Builder::new()
@@ -144,7 +189,9 @@ pub fn run() {
             audio::transcribe_latest,
             get_config,
             log_session,
-            hide_window
+            hide_window,
+            open_config_dir,
+            quit_app
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
