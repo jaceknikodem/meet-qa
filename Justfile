@@ -19,6 +19,19 @@ clean:
     rm -rf dist
     rm -rf logs/*
 
+# Run all tests (frontend and rust)
+test: test-frontend test-rust
+
+# Run frontend tests
+test-frontend:
+    @echo "🧪 Running frontend tests..."
+    npm test -- --run
+
+# Run Rust tests
+test-rust:
+    @echo "🦀 Running Rust tests..."
+    cargo test --manifest-path src-tauri/Cargo.toml
+
 # Show logs from today
 logs:
     @ls -t logs/*.md | head -n 1 | xargs cat

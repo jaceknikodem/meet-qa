@@ -13,6 +13,8 @@ pub struct Config {
     pub buffer_duration_secs: usize,
     pub whisper_ggml_path: String,
     pub prompt: String,
+    pub detect_question_model: Option<String>,
+    pub detect_question_min_chars: usize,
 }
 
 impl Config {
@@ -29,6 +31,13 @@ impl Config {
 
         let gemini_model =
             env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-1.5-flash".to_string());
+
+        let detect_question_model = env::var("DETECT_QUESTION_MODEL").ok();
+
+        let detect_question_min_chars = env::var("DETECT_QUESTION_MIN_CHARS")
+            .unwrap_or_else(|_| "50".to_string())
+            .parse::<usize>()
+            .map_err(|e| format!("Invalid DETECT_QUESTION_MIN_CHARS: {}", e))?;
 
         let global_hotkey =
             env::var("GLOBAL_HOTKEY").unwrap_or_else(|_| "Command+Shift+K".to_string());
@@ -82,6 +91,8 @@ impl Config {
             buffer_duration_secs,
             whisper_ggml_path,
             prompt,
+            detect_question_model,
+            detect_question_min_chars,
         })
     }
 }

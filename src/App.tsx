@@ -17,6 +17,14 @@ function App() {
   const [error, setError] = useState("");
   const [config, setConfig] = useState<AppConfig | null>(null);
 
+  const handleClose = async () => {
+    try {
+      await invoke("hide_window");
+    } catch (err) {
+      console.error("Failed to hide window:", err);
+    }
+  };
+
   useEffect(() => {
     // Fetch initial config
     invoke<AppConfig>("get_config").then(setConfig).catch(console.error);
@@ -123,14 +131,23 @@ function App() {
     return () => {
       unlistenPromise.then(f => f());
     };
-  }, []);
+  }, [config]);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4">
       {/* Main HUD Container */}
-      <div className="bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-6 w-full max-w-2xl shadow-2xl transition-all duration-300">
+      <div className="bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-6 w-full max-w-2xl shadow-2xl transition-all duration-300 relative group">
+        {/* Close Button */}
+        <button
+          onClick={handleClose}
+          className="absolute top-4 right-4 p-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/40 hover:text-white transition-all opacity-0 group-hover:opacity-100"
+          aria-label="Close"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+
         {/* Header */}
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex justify-between items-center mb-4 pr-8">
           <div className="text-xs font-bold text-white/50 uppercase tracking-widest">
             STEALTH SIDEKICK
           </div>

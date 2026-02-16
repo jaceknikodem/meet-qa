@@ -1,11 +1,24 @@
 use crate::config::Config;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
-use tauri::State;
+use tauri::{AppHandle, Emitter, Manager, State};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 const SAMPLE_RATE: u32 = 16000;
+
+#[derive(Serialize)]
+struct OllamaRequest {
+    model: String,
+    prompt: String,
+    stream: bool,
+}
+
+#[derive(Deserialize)]
+struct OllamaResponse {
+    response: String,
+}
 
 pub struct AudioState {
     pub buffer: Arc<Mutex<VecDeque<f32>>>,
@@ -21,7 +34,7 @@ unsafe impl Send for AudioState {}
 unsafe impl Sync for AudioState {}
 
 impl AudioState {
-    pub fn new(config: &Config) -> Result<Self, anyhow::Error> {
+    pub fn new(config: &Config, app_handle: AppHandle) -> Result<Self, anyhow::Error> {
         let host = cpal::default_host();
 
         let device = host
@@ -86,25 +99,48 @@ impl AudioState {
         let ctx_bg = ctx.clone();
         let transcript_bg = last_transcript.clone();
         let updated_bg = last_updated.clone();
+        let detect_model = config.detect_question_model.clone();
+        let min_chars = config.detect_question_min_chars;
+        let app_handle_bg = app_handle.clone();
 
-        std::thread::spawn(move || loop {
-            std::thread::sleep(std::time::Duration::from_secs(5));
+        std::thread::spawn(move || {
+            let mut last_detected_text = String::new();
 
-            let samples: Vec<f32> = {
-                let guard = buffer_bg.lock().unwrap();
-                guard.iter().cloned().collect()
-            };
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(5));
 
-            if samples.is_empty() {
-                continue;
-            }
+                let samples: Vec<f32> = {
+                    let guard = buffer_bg.lock().unwrap();
+                    guard.iter().cloned().collect()
+                };
 
-            if let Ok(text) = run_transcription(&ctx_bg, &samples) {
-                if !text.is_empty() {
-                    let mut t_guard = transcript_bg.lock().unwrap();
-                    let mut u_guard = updated_bg.lock().unwrap();
-                    *t_guard = text;
-                    *u_guard = std::time::Instant::now();
+                if samples.is_empty() {
+                    continue;
+                }
+
+                if let Ok(text) = run_transcription(&ctx_bg, &samples) {
+                    if !text.is_empty() {
+                        let mut t_guard = transcript_bg.lock().unwrap();
+                        let mut u_guard = updated_bg.lock().unwrap();
+                        *t_guard = text.clone();
+                        *u_guard = std::time::Instant::now();
+
+                        // Continuous Detection logic
+                        if let Some(model) = &detect_model {
+                            // Only check if we have significant new text to avoid spamming
+                            if text.len() >= min_chars && text != last_detected_text {
+                                if check_for_question(model, &text) {
+                                    println!("Question detected via Ollama! Triggering HUD.");
+                                    if let Some(window) = app_handle_bg.get_webview_window("main") {
+                                        let _ = window.show();
+                                        let _ = window.set_focus();
+                                        let _ = window.emit("trigger-process", ());
+                                    }
+                                    last_detected_text = text;
+                                }
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -116,6 +152,42 @@ impl AudioState {
             last_updated,
             _stream: stream,
         })
+    }
+}
+
+fn check_for_question(model: &str, text: &str) -> bool {
+    let client = reqwest::blocking::Client::new();
+    let prompt = format!(
+        "You are an assistant that detects if a question or a request for help was just asked in a meeting transcript. 
+        Analyze the following text and respond with ONLY 'YES' if a question was asked in the LAST 15 SECONDS of the text, otherwise respond with 'NO'.
+        
+        Text: \"{}\"",
+        text
+    );
+
+    let req = OllamaRequest {
+        model: model.to_string(),
+        prompt,
+        stream: false,
+    };
+
+    match client
+        .post("http://localhost:11434/api/generate")
+        .json(&req)
+        .send()
+    {
+        Ok(resp) => {
+            if let Ok(ollama_resp) = resp.json::<OllamaResponse>() {
+                let r = ollama_resp.response.trim().to_uppercase();
+                r.contains("YES")
+            } else {
+                false
+            }
+        }
+        Err(e) => {
+            eprintln!("Ollama detection error: {}", e);
+            false
+        }
     }
 }
 
@@ -151,7 +223,23 @@ fn write_input_data_i16(
 
 fn run_transcription(ctx: &WhisperContext, samples: &[f32]) -> Result<String, String> {
     let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-    params.set_n_threads(4);
+
+    // Performance: Use more threads for Mac (8 is usually safe for M-series)
+    params.set_n_threads(8);
+
+    // Speed: Hardcode English to skip language detection
+    params.set_language(Some("en"));
+
+    // Stability: No context prevents "hallucination loops" in rolling buffers
+    params.set_no_context(true);
+
+    // Cleanliness: Suppress non-speech tokens and empty segments
+    params.set_suppress_non_speech_tokens(true);
+    params.set_suppress_blank(true);
+
+    // Formality: Force single segment (often faster for short clips)
+    params.set_single_segment(true);
+
     params.set_print_special(false);
     params.set_print_progress(false);
     params.set_print_realtime(false);

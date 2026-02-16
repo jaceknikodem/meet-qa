@@ -13,6 +13,11 @@ use std::fs::OpenOptions;
 use std::io::Write;
 
 #[tauri::command]
+fn hide_window(window: tauri::Window) -> Result<(), String> {
+    window.hide().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn log_session(
     transcript: String,
     answer: String,
@@ -82,12 +87,18 @@ pub fn run() {
 
     let session_filename = Local::now().format("%Y-%m-%d_%H-%M.md").to_string();
 
-    // Initialize audio state. Panic if fails because this is core functionality.
-    let audio_state = audio::AudioState::new(&config).expect("Failed to initialize audio capture");
-
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .setup(|app| {
+        .manage(config.clone())
+        .manage(SessionState {
+            filename: session_filename,
+        })
+        .setup(move |app| {
+            // Initialize audio state with AppHandle
+            let audio_state = audio::AudioState::new(&config, app.handle().clone())
+                .expect("Failed to initialize audio capture");
+            app.manage(audio_state);
+
             #[cfg(target_os = "macos")]
             if let Some(window) = app.get_webview_window("main") {
                 window.set_content_protected(true)?;
@@ -127,17 +138,13 @@ pub fn run() {
             })
             .build()
         })
-        .manage(config)
-        .manage(audio_state)
-        .manage(SessionState {
-            filename: session_filename,
-        })
         .invoke_handler(tauri::generate_handler![
             get_latest_audio,
             audio::transcribe_audio,
             audio::transcribe_latest,
             get_config,
-            log_session
+            log_session,
+            hide_window
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
