@@ -32,6 +32,7 @@ function App() {
   const [viewMode, setViewMode] = useState<"stealth" | "normal" | "settings">("normal");
 
   const [transcript, setTranscript] = useState("");
+  const [meetingContext, setMeetingContext] = useState("");
   const [response, setResponse] = useState<StructuredResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -107,7 +108,9 @@ function App() {
       setResponse(null);
       const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeConfig.model}:streamGenerateContent?alt=sse&key=${activeConfig.api_key}`;
 
-      const prompt = `${activeConfig.prompt}\n\nTranscript:\n${text}`;
+      const prompt = meetingContext.trim()
+        ? `${activeConfig.prompt}\n\nMeeting Context:\n${meetingContext}\n\nTranscript:\n${text}`
+        : `${activeConfig.prompt}\n\nTranscript:\n${text}`;
 
       const geminiResponse = await fetch(geminiUrl, {
         method: "POST",
@@ -157,10 +160,10 @@ function App() {
       // Final UI and Log processing
       const finalStructured = extractStructuredData(fullRawResponse);
       let logText = "";
-      const MIN_CONFIDENCE = 0.5;
+      const minConfidence = activeConfig.min_confidence ?? 0.5;
 
-      if (finalStructured.confidence < MIN_CONFIDENCE) {
-        logText = `[REJECTED] Confidence ${finalStructured.confidence.toFixed(2)} < ${MIN_CONFIDENCE}\nQ: ${finalStructured.cleaned_question}\nA: ${finalStructured.answer}`;
+      if (finalStructured.confidence < minConfidence) {
+        logText = `[REJECTED] Confidence ${finalStructured.confidence.toFixed(2)} < ${minConfidence}\nQ: ${finalStructured.cleaned_question}\nA: ${finalStructured.answer}`;
       } else {
         logText = `Q: ${finalStructured.cleaned_question}\nA: ${finalStructured.answer}\nConfidence: ${finalStructured.confidence.toFixed(2)}`;
       }
@@ -190,44 +193,17 @@ function App() {
     };
   }, []); // Empty dep array, uses ref for config
 
-  // Live Transcript Polling for Normal Mode
-  useEffect(() => {
-    let interval: number;
-
-    if (viewMode === "normal" && isRecording && !isLoading) {
-      interval = setInterval(async () => {
-        try {
-          // Just get transcript, don't trigger AI
-          // But only if we aren't currently waiting for AI result (handled by !isLoading check)
-          const text = await invoke<string>("transcribe_latest");
-          if (text && text.length > 5 && text !== transcript) {
-            setTranscript(text);
-          }
-        } catch (e) {
-          console.error("Polling error", e);
-        }
-      }, 3000) as unknown as number;
-    }
-
-    return () => clearInterval(interval);
-  }, [viewMode, isRecording, isLoading, transcript]);
-
   // Render Logic
   if (viewMode === "settings") {
     if (!config) return <div className="text-white">Loading config...</div>;
     return (
-      <div className="w-screen h-screen flex flex-col items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-        <div className="w-full max-w-2xl h-[85vh]">
-          <SettingsView
-            config={config}
-            onSave={(newConfig) => {
-              setConfig(newConfig);
-              // Optionally go back to previous view?
-            }}
-            onClose={() => setViewMode("normal")}
-          />
-        </div>
-      </div>
+      <SettingsView
+        config={config}
+        onSave={(newConfig) => {
+          setConfig(newConfig);
+        }}
+        onClose={() => setViewMode("normal")}
+      />
     );
   }
 
@@ -236,6 +212,8 @@ function App() {
       <NormalView
         config={config}
         transcript={transcript}
+        meetingContext={meetingContext}
+        onMeetingContextChange={setMeetingContext}
         response={response}
         isLoading={isLoading}
         isRecording={isRecording}
@@ -251,8 +229,10 @@ function App() {
     <StealthView
       config={config}
       transcript={transcript}
+      meetingContext={meetingContext}
       response={response}
       isLoading={isLoading}
+      isRecording={isRecording}
       error={error}
       onClose={handleClose}
       onOpenSettings={() => setViewMode("settings")}

@@ -206,6 +206,7 @@ pub fn run() {
             prompt: "".to_string(),
             detect_question_model: None,
             detect_question_min_chars: 50,
+            min_confidence: 0.5,
             error: Some(e),
          };
          c

@@ -99,7 +99,7 @@ You can manage settings directly in the app via the **Settings View** (accessibl
 ### 🪟 Normal Mode (Default)
 A standard window interface for regular meeting backup. 
 -   **Live Transcript**: Shows a scrolling preview of the meeting in real-time.
--   **Manual Controls**: Buttons to Start/Stop listening or manually "Ask Gemini".
+-   **Manual Controls**: Buttons to Start/Stop listening or manually "Ask".
 -   **Settings Access**: Easy access to the internal config editor.
 
 ### 👻 Stealth Mode

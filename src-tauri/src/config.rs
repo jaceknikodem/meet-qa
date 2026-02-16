@@ -15,6 +15,7 @@ pub struct Config {
     pub prompt: String,
     pub detect_question_model: Option<String>,
     pub detect_question_min_chars: usize,
+    pub min_confidence: f32,
     pub error: Option<String>,
 }
 
@@ -76,6 +77,9 @@ GLOBAL_HOTKEY=Command+Shift+K
 
 # 5. Audio buffer length in seconds (Optional, Default: 45)
 BUFFER_DURATION_SECS=45
+
+# 6. Minimum confidence for AI response (Optional, Default: 0.5)
+MIN_CONFIDENCE=0.5
 "#;
             if let Err(e) = std::fs::write(&env_path, default_env) {
                 println!("Warning: Failed to create .env template: {}", e);
@@ -126,6 +130,11 @@ BUFFER_DURATION_SECS=45
             .parse::<usize>()
             .unwrap_or(45);
 
+        let min_confidence = env::var("MIN_CONFIDENCE")
+            .unwrap_or_else(|_| "0.5".to_string())
+            .parse::<f32>()
+            .unwrap_or(0.5);
+
         // Load prompt from file in App Data dir
         let mut prompt = String::new();
         let prompt_path = app_data_dir.join("prompt.txt");
@@ -150,6 +159,7 @@ BUFFER_DURATION_SECS=45
             prompt,
             detect_question_model,
             detect_question_min_chars,
+            min_confidence,
             error,
         })
     }

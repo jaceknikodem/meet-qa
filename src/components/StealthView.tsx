@@ -5,21 +5,24 @@ import { invoke } from "@tauri-apps/api/core";
 interface StealthViewProps {
     config: AppConfig | null;
     transcript: string;
+    meetingContext: string;
     response: StructuredResponse | null;
     isLoading: boolean;
+    isRecording: boolean;
     error: string;
     onClose: () => void;
     onOpenSettings: () => void;
     onSwitchToNormal: () => void;
 }
 
-const MIN_CONFIDENCE = 0.5;
 
 export function StealthView({
     config,
     transcript,
+    meetingContext,
     response,
     isLoading,
+    isRecording,
     error,
     onClose,
     onOpenSettings,
@@ -69,8 +72,22 @@ export function StealthView({
 
                 {/* Header */}
                 <div className="flex justify-between items-center mb-4 pr-8">
-                    <div className="text-xs font-bold text-white/50 uppercase tracking-widest">
-                        STEALTH SIDEKICK
+                    <div className="flex items-center gap-3">
+                        <div className="text-xs font-bold text-white/50 uppercase tracking-widest">
+                            STEALTH SIDEKICK
+                        </div>
+                        {meetingContext.trim() && (
+                            <div className="px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 flex items-center gap-1.5">
+                                <div className="w-1 h-1 bg-blue-400 rounded-full"></div>
+                                <span className="text-[9px] text-white/40 font-bold uppercase tracking-wider">Context Active</span>
+                            </div>
+                        )}
+                        {!isRecording && (
+                            <div className="px-1.5 py-0.5 rounded-md bg-red-500/10 border border-red-500/20 flex items-center gap-1.5">
+                                <div className="w-1 h-1 bg-red-500 rounded-full"></div>
+                                <span className="text-[9px] text-red-400 font-bold uppercase tracking-wider">Paused</span>
+                            </div>
+                        )}
                     </div>
                     {isLoading && (
                         <div className="flex items-center gap-2">
@@ -107,11 +124,11 @@ export function StealthView({
 
                             {(response || isLoading) && (
                                 <div className="space-y-3">
-                                    {response && response.confidence < MIN_CONFIDENCE ? (
+                                    {response && response.confidence < (config?.min_confidence ?? 0.5) ? (
                                         <div className="py-4 text-center space-y-2">
                                             <p className="text-gray-500 font-medium">Acked, but no triggers found</p>
                                             <p className="text-[10px] text-gray-600 font-mono">
-                                                Confidence: {response.confidence.toFixed(2)} / Threshold: {MIN_CONFIDENCE}
+                                                Confidence: {response.confidence.toFixed(2)} / Threshold: {config?.min_confidence ?? 0.5}
                                             </p>
                                         </div>
                                     ) : (
