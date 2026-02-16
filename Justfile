@@ -36,6 +36,11 @@ test-rust:
 logs:
     @ls -t logs/*.md | head -n 1 | xargs cat
 
+# Build the production app for the current platform
+build:
+    @echo "🏗️ Building production version..."
+    npm run tauri build
+
 # Quick help
 help:
     @just --list
