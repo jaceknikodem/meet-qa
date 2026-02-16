@@ -27,4 +27,5 @@ hound = "3.5"
 dotenvy = "0.15"
 anyhow = "1.0"
 tauri-plugin-global-shortcut = "2"
+chrono = "0.4"
 

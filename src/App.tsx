@@ -2,9 +2,10 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
-interface GeminiConfig {
+interface AppConfig {
   api_key: string;
   model: string;
+  global_hotkey: string;
 }
 
 function App() {
@@ -12,9 +13,12 @@ function App() {
   const [response, setResponse] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const [_, setConfig] = useState<GeminiConfig | null>(null);
+  const [config, setConfig] = useState<AppConfig | null>(null);
 
   useEffect(() => {
+    // Fetch initial config
+    invoke<AppConfig>("get_config").then(setConfig).catch(console.error);
+
     // Listen for trigger
     const unlistenPromise = listen("trigger-process", async () => {
       setIsLoading(true);
@@ -41,7 +45,7 @@ function App() {
         }
 
         // 3. Gemini
-        const currentConfig = await invoke<GeminiConfig>("get_gemini_config");
+        const currentConfig = await invoke<AppConfig>("get_config");
         setConfig(currentConfig);
 
         // Call Gemini API via fetch (REST)
@@ -66,6 +70,9 @@ function App() {
 
         const answer = data.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
         setResponse(answer);
+
+        // 4. Log to file
+        await invoke("log_session", { transcript: text, answer });
 
       } catch (err: any) {
         console.error(err);
@@ -114,7 +121,7 @@ function App() {
           <div className="p-1">
             {!response && !isLoading && !transcript && (
               <div className="text-center text-gray-500 py-8 text-sm">
-                Press <kbd className="bg-white/10 px-2 py-1 rounded text-white font-mono">Cmd+Shift+K</kbd> to activate
+                Press <kbd className="bg-white/10 px-2 py-1 rounded text-white font-mono">{config?.global_hotkey || "Cmd+Shift+K"}</kbd> to activate
               </div>
             )}
 

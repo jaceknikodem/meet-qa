@@ -42,6 +42,8 @@ Create a `.env` file in the root directory:
 GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-1.5-flash
 WHISPER_GGML_PATH=/path/to/your/ggml-small-q5_1.bin
+BUFFER_DURATION_SECS=45
+GLOBAL_HOTKEY=Command+Shift+K
 ```
 
 ### Installation & Run
@@ -68,3 +70,9 @@ npm run tauri dev
 
 -   **Zero Logs**: Audio is kept in a volatile RAM buffer. Once purged, it is gone forever.
 -   **Local First**: Transcription happens on your machine using Whisper. Only the resulting text snippet is sent to the Gemini API for analysis.
+
+---
+
+## 📂 Session Logging
+
+The app automatically saves every exchange (Transcript + AI Response) to timestamped Markdown files in the `logs/` directory of the project. Files are named by date (e.g., `logs/2026-02-16_15-34.md`), providing a persistent searchable history of your meetings.
