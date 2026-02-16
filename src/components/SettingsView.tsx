@@ -16,6 +16,8 @@ export interface AppConfig {
 
 interface SettingsViewProps {
   config: AppConfig;
+  defaultMode: "validate" | "answer" | "followup";
+  onDefaultModeChange: (mode: "validate" | "answer" | "followup") => void;
   onSave: (newConfig: AppConfig) => void;
   onClose: () => void;
 }
@@ -38,7 +40,7 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-export function SettingsView({ config, onSave, onClose }: SettingsViewProps) {
+export function SettingsView({ config, defaultMode, onDefaultModeChange, onSave, onClose }: SettingsViewProps) {
   const [formData, setFormData] = useState<AppConfig>(config);
   const debouncedFormData = useDebounce(formData, 1000);
 
@@ -310,18 +312,34 @@ export function SettingsView({ config, onSave, onClose }: SettingsViewProps) {
               <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
                 Global Hotkey
               </label>
-              <input
-                type="text"
-                value={formData.global_hotkey || "Command+Shift+K"}
-                onChange={(e) => handleChange("global_hotkey", e.target.value)}
-                className={`w-full bg-black/40 border rounded px-3 py-2 focus:outline-none transition-colors text-white ${hotkeyValidation === 'invalid' ? 'border-red-500/50 focus:border-red-500' : 'border-white/10 focus:border-blue-500'
-                  }`}
-              />
-              {hotkeyValidation === 'invalid' ? (
-                <p className="text-[10px] text-red-500">Invalid hotkey format (e.g. Command+Shift+K) - Not Saved</p>
-              ) : (
-                <p className="text-[10px] text-gray-600">Requires restart to apply.</p>
-              )}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="col-span-2">
+                  <input
+                    type="text"
+                    value={formData.global_hotkey || "Command+Shift+K"}
+                    onChange={(e) => handleChange("global_hotkey", e.target.value)}
+                    className={`w-full bg-black/40 border rounded px-3 py-2 focus:outline-none transition-colors text-white ${hotkeyValidation === 'invalid' ? 'border-red-500/50 focus:border-red-500' : 'border-white/10 focus:border-blue-500'
+                      }`}
+                  />
+                  {hotkeyValidation === 'invalid' ? (
+                    <p className="text-[10px] text-red-500 mt-1">Invalid hotkey format</p>
+                  ) : (
+                    <p className="text-[10px] text-gray-600 mt-1">Requires restart to apply.</p>
+                  )}
+                </div>
+                <div>
+                  <select
+                    value={defaultMode}
+                    onChange={(e) => onDefaultModeChange(e.target.value as any)}
+                    className="w-full bg-black/40 border border-white/10 rounded px-2 py-2 focus:outline-none focus:border-blue-500 transition-colors text-white text-sm"
+                  >
+                    <option value="answer">Answer</option>
+                    <option value="validate">Validate</option>
+                    <option value="followup">Follow-up</option>
+                  </select>
+                  <p className="text-[10px] text-gray-600 mt-1">Action on trigger</p>
+                </div>
+              </div>
             </div>
 
             {/* Whisper Path */}

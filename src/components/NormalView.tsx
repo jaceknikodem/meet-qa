@@ -11,7 +11,8 @@ interface NormalViewProps {
     isLoading: boolean;
     isRecording: boolean;
     onToggleRecording: () => void;
-    onTriggerAI: () => void;
+    onTriggerAI: (mode: "validate" | "answer" | "followup") => void;
+    lastMode: "validate" | "answer" | "followup";
     onOpenSettings: () => void;
     onSwitchToStealth: () => void;
 }
@@ -26,6 +27,7 @@ export function NormalView({
     isRecording,
     onToggleRecording,
     onTriggerAI,
+    lastMode,
     onOpenSettings,
     onSwitchToStealth,
 }: NormalViewProps) {
@@ -116,10 +118,10 @@ export function NormalView({
                         </p>
                     </div>
 
-                    <div className="flex gap-3">
+                    <div className="flex flex-col gap-3">
                         <button
                             onClick={onToggleRecording}
-                            className={`flex-1 py-2.5 px-4 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 transition-all ${isRecording
+                            className={`w-full py-2.5 px-4 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 transition-all ${isRecording
                                 ? "bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/10"
                                 : "bg-green-600 text-white hover:bg-green-500 shadow-lg shadow-green-500/10"
                                 }`}
@@ -127,29 +129,45 @@ export function NormalView({
                             {isRecording ? (
                                 <>
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
-                                    Stop
+                                    Stop Recording
                                 </>
                             ) : (
                                 <>
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                                    Start
+                                    Start Recording
                                 </>
                             )}
                         </button>
 
-                        <button
-                            onClick={onTriggerAI}
-                            disabled={isLoading || !isRecording}
-                            className="flex-1 py-2.5 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed group relative overflow-hidden"
-                        >
-                            <div className="absolute inset-0 bg-gradient-to-r from-blue-400/0 via-white/20 to-blue-400/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                            {isLoading ? (
-                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                            ) : (
-                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path></svg>
-                            )}
-                            {isLoading ? "Analyzing..." : "Ask"}
-                        </button>
+                        <div className="grid grid-cols-3 gap-2">
+                            <button
+                                onClick={() => onTriggerAI("validate")}
+                                disabled={isLoading || !isRecording}
+                                className="py-2 px-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs flex flex-col items-center justify-center gap-1 transition-all shadow-lg shadow-indigo-500/10 disabled:opacity-50 disabled:cursor-not-allowed h-16"
+                                title="Validate the most recent claim"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                                Validate
+                            </button>
+                            <button
+                                onClick={() => onTriggerAI("answer")}
+                                disabled={isLoading || !isRecording}
+                                className="py-2 px-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs flex flex-col items-center justify-center gap-1 transition-all shadow-lg shadow-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed h-16"
+                                title="Answer the most recent question"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+                                Answer
+                            </button>
+                            <button
+                                onClick={() => onTriggerAI("followup")}
+                                disabled={isLoading || !isRecording}
+                                className="py-2 px-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs flex flex-col items-center justify-center gap-1 transition-all shadow-lg shadow-purple-500/10 disabled:opacity-50 disabled:cursor-not-allowed h-16"
+                                title="Generate a follow-up question"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path><path d="M16 21h5v-5"></path></svg>
+                                Follow-up
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -177,12 +195,16 @@ export function NormalView({
                         {response && (
                             <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
                                 <div>
-                                    <div className="text-[10px] text-blue-400 font-bold mb-1 uppercase tracking-wider">Identified Question</div>
+                                    <div className="text-[10px] text-blue-400 font-bold mb-1 uppercase tracking-wider">
+                                        {lastMode === "validate" ? "Claim Verified" : lastMode === "followup" ? "Context" : "Identified Question"}
+                                    </div>
                                     <p className="text-gray-300 italic">"{response.cleaned_question}"</p>
                                 </div>
                                 <div className="w-full h-px bg-white/10"></div>
                                 <div>
-                                    <div className="text-[10px] text-green-400 font-bold mb-1 uppercase tracking-wider">Answer</div>
+                                    <div className="text-[10px] text-green-400 font-bold mb-1 uppercase tracking-wider">
+                                        {lastMode === "validate" ? "Analysis" : lastMode === "followup" ? "Suggested Question" : "Answer"}
+                                    </div>
                                     <p className="text-white text-lg leading-relaxed">{response.answer}</p>
                                 </div>
                             </div>

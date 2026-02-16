@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { StructuredResponse } from "../utils/gemini";
 import { AppConfig } from "./SettingsView";
 import { invoke } from "@tauri-apps/api/core";
@@ -11,9 +12,13 @@ interface StealthViewProps {
     isRecording: boolean;
     error: string;
     onClose: () => void;
+
     onOpenSettings: () => void;
     onSwitchToNormal: () => void;
+    onTriggerAI: (mode: "validate" | "answer" | "followup") => void;
+    lastMode: "validate" | "answer" | "followup";
 }
+
 
 
 export function StealthView({
@@ -27,7 +32,38 @@ export function StealthView({
     onClose,
     onOpenSettings,
     onSwitchToNormal,
+    onTriggerAI,
+    lastMode,
 }: StealthViewProps) {
+    // Keyboard Shortcuts
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Ignore if typing in an input (though there are no inputs in this view yet, good practice)
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+            switch (e.key.toLowerCase()) {
+                case "escape":
+                    onClose();
+                    break;
+                case "1":
+                case "v":
+                    onTriggerAI("validate");
+                    break;
+                case "2":
+                case "a":
+                    onTriggerAI("answer");
+                    break;
+                case "3":
+                case "f":
+                    onTriggerAI("followup");
+                    break;
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [onTriggerAI, onClose]);
+
     return (
         <div
             data-tauri-drag-region
@@ -156,6 +192,33 @@ export function StealthView({
                         {error}
                     </div>
                 )}
+
+                {/* Quick Actions Footer */}
+                <div className="flex gap-2 justify-center mt-4 pt-4 border-t border-white/5">
+                    {[
+                        { id: "validate", label: "Validate", key: "V", icon: <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path> },
+                        { id: "answer", label: "Answer", key: "A", icon: <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path> },
+                        { id: "followup", label: "Follow-up", key: "F", icon: <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path> },
+                    ].map((mode) => (
+                        <button
+                            key={mode.id}
+                            onClick={() => onTriggerAI(mode.id as any)}
+                            disabled={isLoading || !isRecording}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] uppercase tracking-wider transition-all border group ${lastMode === mode.id
+                                ? "bg-white/10 text-white border-white/20 shadow-[0_0_10px_rgba(255,255,255,0.1)] font-bold"
+                                : "bg-transparent text-white/30 border-transparent hover:bg-white/5 hover:text-white/60 font-medium"
+                                } disabled:opacity-30 disabled:cursor-not-allowed`}
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                {mode.icon}
+                            </svg>
+                            {mode.label}
+                            <span className="ml-1 opacity-30 text-[8px] font-mono border border-white/20 px-1 rounded-sm group-hover:opacity-100 transition-opacity hidden sm:inline-block">
+                                {mode.key}
+                            </span>
+                        </button>
+                    ))}
+                </div>
             </div>
         </div>
     );

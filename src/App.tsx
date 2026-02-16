@@ -25,6 +25,14 @@ const RESPONSE_SCHEMA = {
   required: ["cleaned_question", "answer", "confidence"]
 };
 
+type AIMode = "validate" | "answer" | "followup";
+
+const PROMPTS: Record<AIMode, string> = {
+  validate: "Your task: Identify the most recent significant claim in the transcript and validate it for accuracy and logical consistency. If it is a fact, check it. If it is an opinion, note that.",
+  answer: "Your task: Identify the most recent question in the transcript and answer it directly and concisely.",
+  followup: "Your task: Generate a single, insightful follow-up question based on the transcript context."
+};
+
 // Polling interval for Normal Mode live transcript
 const LIVE_TRANSCRIPT_INTERVAL_MS = 1000;
 
@@ -37,11 +45,19 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [config, setConfig] = useState<AppConfig | null>(null);
+
   const [isRecording, setIsRecording] = useState(true);
+  const [lastMode, setLastMode] = useState<AIMode>("answer");
+  const [defaultMode, setDefaultMode] = useState<AIMode>(() => {
+    return (localStorage.getItem("default_mode") as AIMode) || "answer";
+  });
 
   // Use refs to access latest state in callbacks/effects without causing re-renders loops
   const configRef = useRef(config);
   configRef.current = config;
+
+  const defaultModeRef = useRef(defaultMode);
+  defaultModeRef.current = defaultMode;
 
   const isRecordingRef = useRef(isRecording);
   isRecordingRef.current = isRecording;
@@ -50,6 +66,11 @@ function App() {
   useEffect(() => {
     invoke<AppConfig>("get_config").then(setConfig).catch(console.error);
   }, []);
+
+  const handleDefaultModeChange = (mode: AIMode) => {
+    setDefaultMode(mode);
+    localStorage.setItem("default_mode", mode);
+  };
 
   const handleClose = async () => {
     if (viewMode === 'settings') {
@@ -69,8 +90,9 @@ function App() {
     setIsRecording(newState);
   }, [isRecording]);
 
-  const runGeminiFlow = async () => {
+  const runGeminiFlow = async (mode: AIMode = "answer") => {
     if (isLoading) return; // Prevent double trigger
+    setLastMode(mode);
 
     const startTime = performance.now();
     setIsLoading(true);
@@ -111,9 +133,12 @@ function App() {
       setResponse(null);
       const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeConfig.model}:streamGenerateContent?alt=sse&key=${activeConfig.api_key}`;
 
+      const promptInstruction = PROMPTS[mode];
+      const basePrompt = activeConfig.prompt || "";
+
       const prompt = meetingContext.trim()
-        ? `${activeConfig.prompt}\n\nMeeting Context:\n${meetingContext}\n\nTranscript:\n${text}`
-        : `${activeConfig.prompt}\n\nTranscript:\n${text}`;
+        ? `${basePrompt}\n\n${promptInstruction}\n\nMeeting Context:\n${meetingContext}\n\nTranscript:\n${text}`
+        : `${basePrompt}\n\n${promptInstruction}\n\nTranscript:\n${text}`;
 
       const geminiResponse = await fetch(geminiUrl, {
         method: "POST",
@@ -194,7 +219,7 @@ function App() {
       // If we found a question, user likely wants to see the Stealth view if hidden,
       // OR just run the flow if already visible.
       // Backend handles showing the window.
-      await runGeminiFlow();
+      await runGeminiFlow(defaultModeRef.current);
     });
 
     return () => {
@@ -208,6 +233,8 @@ function App() {
     return (
       <SettingsView
         config={config}
+        defaultMode={defaultMode}
+        onDefaultModeChange={handleDefaultModeChange}
         onSave={(newConfig) => {
           setConfig(newConfig);
         }}
@@ -227,7 +254,8 @@ function App() {
         isLoading={isLoading}
         isRecording={isRecording}
         onToggleRecording={handleToggleRecording}
-        onTriggerAI={runGeminiFlow}
+        onTriggerAI={(mode) => runGeminiFlow(mode)}
+        lastMode={lastMode}
         onOpenSettings={() => setViewMode("settings")}
         onSwitchToStealth={() => setViewMode("stealth")}
       />
@@ -244,6 +272,8 @@ function App() {
       isRecording={isRecording}
       error={error}
       onClose={handleClose}
+      onTriggerAI={(mode) => runGeminiFlow(mode)}
+      lastMode={lastMode}
       onOpenSettings={() => setViewMode("settings")}
       onSwitchToNormal={() => setViewMode("normal")}
     />
