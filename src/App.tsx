@@ -22,6 +22,7 @@ function App() {
 
     // Listen for trigger
     const unlistenPromise = listen("trigger-process", async () => {
+      const startTime = performance.now();
       setIsLoading(true);
       setError("");
       setTranscript("Listening...");
@@ -32,6 +33,8 @@ function App() {
         // 1. Get Transcription (Single IPC jump)
         setTranscript("Transcribing...");
         const text = await invoke<string>("transcribe_latest");
+        const transcriptionTime = performance.now();
+        console.log(`[Latency] Transcription took: ${(transcriptionTime - startTime).toFixed(0)}ms`);
         console.log("Transcript:", text);
         setTranscript(text);
 
@@ -48,13 +51,8 @@ function App() {
         }
 
         // 2. Gemini Streaming
-        if (!config) {
-          const freshConfig = await invoke<AppConfig>("get_config");
-          setConfig(freshConfig);
-          if (!freshConfig.api_key) throw new Error("API Key missing");
-        }
-
         const activeConfig = config || await invoke<AppConfig>("get_config");
+        if (!config) setConfig(activeConfig);
 
         setResponse("");
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeConfig.model}:streamGenerateContent?alt=sse&key=${activeConfig.api_key}`;
@@ -80,10 +78,17 @@ function App() {
         const decoder = new TextDecoder();
         let fullAnswer = "";
         let buffer = "";
+        let hasReceivedFirstChunk = false;
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+
+          if (!hasReceivedFirstChunk) {
+            hasReceivedFirstChunk = true;
+            const firstChunkTime = performance.now();
+            console.log(`[Latency] Time to first Gemini chunk: ${(firstChunkTime - transcriptionTime).toFixed(0)}ms (Total: ${(firstChunkTime - startTime).toFixed(0)}ms)`);
+          }
 
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split("\n");
@@ -106,6 +111,9 @@ function App() {
             }
           }
         }
+
+        const endTime = performance.now();
+        console.log(`[Latency] Full response took: ${(endTime - startTime).toFixed(0)}ms`);
 
         // 3. Log to file (in background)
         invoke("log_session", { transcript: text, answer: fullAnswer }).catch(console.error);
