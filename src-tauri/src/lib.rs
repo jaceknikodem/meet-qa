@@ -135,6 +135,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_latest_audio,
             audio::transcribe_audio,
+            audio::transcribe_latest,
             get_config,
             log_session
         ])

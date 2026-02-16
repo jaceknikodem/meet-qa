@@ -29,13 +29,9 @@ function App() {
 
       try {
         console.log("Process triggered");
-        // 1. Get Audio
-        const wavPath = await invoke<string>("get_latest_audio");
-        console.log("Audio captured at:", wavPath);
-
-        // 2. Transcribe
+        // 1. Get Transcription (Single IPC jump)
         setTranscript("Transcribing...");
-        const text = await invoke<string>("transcribe_audio", { wavPath });
+        const text = await invoke<string>("transcribe_latest");
         console.log("Transcript:", text);
         setTranscript(text);
 
@@ -51,17 +47,21 @@ function App() {
           return;
         }
 
-        // 3. Gemini
-        const currentConfig = await invoke<AppConfig>("get_config");
-        setConfig(currentConfig);
+        // 2. Gemini Streaming
+        if (!config) {
+          const freshConfig = await invoke<AppConfig>("get_config");
+          setConfig(freshConfig);
+          if (!freshConfig.api_key) throw new Error("API Key missing");
+        }
 
-        // Call Gemini API via fetch (REST)
-        setResponse("Thinking...");
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${currentConfig.model}:generateContent?key=${currentConfig.api_key}`;
+        const activeConfig = config || await invoke<AppConfig>("get_config");
 
-        const prompt = `${currentConfig.prompt}\n\nTranscript:\n${text}`;
+        setResponse("");
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeConfig.model}:streamGenerateContent?alt=sse&key=${activeConfig.api_key}`;
 
-        const apiRes = await fetch(geminiUrl, {
+        const prompt = `${activeConfig.prompt}\n\nTranscript:\n${text}`;
+
+        const response = await fetch(geminiUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -69,17 +69,46 @@ function App() {
           })
         });
 
-        const data = await apiRes.json();
-
-        if (data.error) {
-          throw new Error(data.error.message);
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.error?.message || "Gemini API error");
         }
 
-        const answer = data.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
-        setResponse(answer);
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error("No response body");
 
-        // 4. Log to file
-        await invoke("log_session", { transcript: text, answer });
+        const decoder = new TextDecoder();
+        let fullAnswer = "";
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          // Keep the last (potentially incomplete) line in the buffer
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (!trimmedLine || !trimmedLine.startsWith("data: ")) continue;
+
+            try {
+              const json = JSON.parse(trimmedLine.substring(6));
+              const textPart = json.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (textPart) {
+                fullAnswer += textPart;
+                setResponse(fullAnswer);
+              }
+            } catch (e) {
+              // Not a full JSON or heartbeat
+            }
+          }
+        }
+
+        // 3. Log to file (in background)
+        invoke("log_session", { transcript: text, answer: fullAnswer }).catch(console.error);
 
       } catch (err: any) {
         console.error(err);

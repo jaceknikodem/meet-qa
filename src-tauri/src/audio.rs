@@ -122,44 +122,55 @@ fn write_input_data_i16(
 
 #[tauri::command]
 pub fn get_latest_audio(state: State<AudioState>) -> Result<String, String> {
+    save_latest_audio_to_temp(&state)
+}
+
+fn save_latest_audio_to_temp(state: &AudioState) -> Result<String, String> {
     let guard = state.buffer.lock().map_err(|e| e.to_string())?;
-
-    // Convert to Vec
     let samples: Vec<f32> = guard.iter().cloned().collect();
+    drop(guard); // Release lock early
 
-    // Save to temp file
     let spec = hound::WavSpec {
         channels: 1,
         sample_rate: SAMPLE_RATE,
-        bits_per_sample: 32,
-        sample_format: hound::SampleFormat::Float,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
     };
 
     let temp_path = std::env::temp_dir().join("recording.wav");
     let mut writer = hound::WavWriter::create(&temp_path, spec).map_err(|e| e.to_string())?;
 
     for sample in samples {
-        writer.write_sample(sample).map_err(|e| e.to_string())?;
+        // Clamp and convert f32 (-1.0 to 1.0) to i16
+        let sample_i16 = (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
+        writer.write_sample(sample_i16).map_err(|e| e.to_string())?;
     }
 
     writer.finalize().map_err(|e| e.to_string())?;
-
     Ok(temp_path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
 pub fn transcribe_audio(wav_path: String, config: State<Config>) -> Result<String, String> {
-    let model_path = &config.whisper_ggml_path;
+    run_whisper_cli(&wav_path, &config.whisper_ggml_path)
+}
 
-    // Execute whisper-cli
-    // We assume it prints to stdout by default or we use -otxt?
-    // Let's capture stdout.
+#[tauri::command]
+pub fn transcribe_latest(
+    audio_state: State<AudioState>,
+    config: State<Config>,
+) -> Result<String, String> {
+    let wav_path = save_latest_audio_to_temp(&audio_state)?;
+    run_whisper_cli(&wav_path, &config.whisper_ggml_path)
+}
+
+fn run_whisper_cli(wav_path: &str, model_path: &str) -> Result<String, String> {
     let output = std::process::Command::new("whisper-cli")
         .arg("-f")
-        .arg(&wav_path)
+        .arg(wav_path)
         .arg("-m")
-        .arg(&model_path)
-        .arg("-nt") // No timestamps, usually common flag
+        .arg(model_path)
+        .arg("-nt")
         .output()
         .map_err(|e| format!("Failed to execute whisper-cli: {}", e))?;
 
@@ -170,6 +181,5 @@ pub fn transcribe_audio(wav_path: String, config: State<Config>) -> Result<Strin
         ));
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    Ok(stdout)
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
