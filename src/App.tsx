@@ -44,6 +44,12 @@ function App() {
           return;
         }
 
+        if (text.trim().length < 25) {
+          setResponse("Transcript too short for meaningful analysis.");
+          setIsLoading(false);
+          return;
+        }
+
         // 3. Gemini
         const currentConfig = await invoke<AppConfig>("get_config");
         setConfig(currentConfig);

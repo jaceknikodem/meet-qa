@@ -53,6 +53,7 @@ fn get_config() -> Result<AppConfig, String> {
         std::env::var("GEMINI_API_KEY").map_err(|_| "GEMINI_API_KEY not found".to_string())?;
     let model = std::env::var("GEMINI_MODEL").unwrap_or("gemini-1.5-flash".to_string());
     let global_hotkey = std::env::var("GLOBAL_HOTKEY").unwrap_or("Command+Shift+K".to_string());
+
     Ok(AppConfig {
         api_key,
         model,
@@ -61,12 +62,30 @@ fn get_config() -> Result<AppConfig, String> {
 }
 
 use tauri::{Emitter, Manager};
-use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{Shortcut, ShortcutState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Load environment variables from .env file
-    dotenvy::dotenv().ok();
+    // We try to find it in the current dir or parent dir (since we're likely in src-tauri)
+    if let Ok(cwd) = std::env::current_dir() {
+        let mut path = cwd.clone();
+        loop {
+            let env_path = path.join(".env");
+            if env_path.exists() {
+                dotenvy::from_path(env_path).ok();
+                break;
+            }
+            if !path.pop() {
+                // Fallback to standard search if we hit root
+                dotenvy::dotenv().ok();
+                break;
+            }
+        }
+    } else {
+        dotenvy::dotenv().ok();
+    }
+
     use chrono::Local;
 
     let hotkey_str =

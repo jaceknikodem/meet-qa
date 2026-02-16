@@ -5,8 +5,9 @@
   "windows": [
     "main"
   ],
-  "core:default",
-  "opener:default",
-  "global-shortcut:allow-all"
-]
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "global-shortcut:default"
+  ]
 }

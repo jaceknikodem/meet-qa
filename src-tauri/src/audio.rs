@@ -7,10 +7,13 @@ const SAMPLE_RATE: u32 = 16000;
 
 pub struct AudioState {
     pub buffer: Arc<Mutex<VecDeque<f32>>>,
-    pub max_samples: usize,
     // We keep the stream around so it doesn't get dropped and stop recording
-    pub _stream: Mutex<cpal::Stream>,
+    pub _stream: cpal::Stream,
 }
+
+// cpal::Stream is not Send/Sync on all platforms, but we just hold it here to keep it alive.
+unsafe impl Send for AudioState {}
+unsafe impl Sync for AudioState {}
 
 impl AudioState {
     pub fn new() -> Result<Self, anyhow::Error> {
@@ -75,8 +78,7 @@ impl AudioState {
 
         Ok(AudioState {
             buffer,
-            max_samples,
-            _stream: Mutex::new(stream),
+            _stream: stream,
         })
     }
 }
