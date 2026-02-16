@@ -43,6 +43,9 @@ function App() {
   const configRef = useRef(config);
   configRef.current = config;
 
+  const isRecordingRef = useRef(isRecording);
+  isRecordingRef.current = isRecording;
+
   // Load initial config
   useEffect(() => {
     invoke<AppConfig>("get_config").then(setConfig).catch(console.error);
@@ -182,6 +185,12 @@ function App() {
   // Event Listener for Hotkey / Background Triggers
   useEffect(() => {
     const unlistenPromise = listen("trigger-process", async () => {
+      // Don't trigger if recording is paused
+      if (!isRecordingRef.current) {
+        console.log("Ignored hotkey: Recording is paused");
+        return;
+      }
+
       // If we found a question, user likely wants to see the Stealth view if hidden,
       // OR just run the flow if already visible.
       // Backend handles showing the window.

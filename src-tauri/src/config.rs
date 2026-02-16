@@ -16,6 +16,7 @@ pub struct Config {
     pub detect_question_model: Option<String>,
     pub detect_question_min_chars: usize,
     pub min_confidence: f32,
+    pub silence_threshold: f32,
     pub error: Option<String>,
 }
 
@@ -80,6 +81,10 @@ BUFFER_DURATION_SECS=45
 
 # 6. Minimum confidence for AI response (Optional, Default: 0.5)
 MIN_CONFIDENCE=0.5
+
+# 7. Silence Threshold (Optional, Default: 0.005)
+# Increase if background noise triggers transcription, decrease if quiet speech is cut off.
+SILENCE_THRESHOLD=0.005
 "#;
             if let Err(e) = std::fs::write(&env_path, default_env) {
                 println!("Warning: Failed to create .env template: {}", e);
@@ -135,6 +140,11 @@ MIN_CONFIDENCE=0.5
             .parse::<f32>()
             .unwrap_or(0.5);
 
+        let silence_threshold = env::var("SILENCE_THRESHOLD")
+            .unwrap_or_else(|_| "0.005".to_string())
+            .parse::<f32>()
+            .unwrap_or(0.005);
+
         // Load prompt from file in App Data dir
         let mut prompt = String::new();
         let prompt_path = app_data_dir.join("prompt.txt");
@@ -160,6 +170,7 @@ MIN_CONFIDENCE=0.5
             detect_question_model,
             detect_question_min_chars,
             min_confidence,
+            silence_threshold,
             error,
         })
     }

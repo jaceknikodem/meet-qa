@@ -11,7 +11,7 @@ Stealth Sidekick works as a silent listener. It maintains a **45-second rolling 
 ### Key Logic:
 1.  **Always Listening**: Starts capturing system audio immediately on launch (Mono 16kHz) via `cpal`. Audio is kept in RAM and purged every 45 seconds.
 2.  **Pre-emptive Transcription**: To ensure sub-second response times, the app transcribes the audio buffer in the background every 5 seconds using `whisper-rs`.
-3.  **Controlled Intelligence**: Uses Gemini 1.5 Flash with **Controlled Generation (Strict JSON)**. The AI is forced to return a structured confidence score alongside its answer.
+3.  **Controlled Intelligence**: Uses Gemini 2.5 Flash with **Controlled Generation (Strict JSON)**. The AI is forced to return a structured confidence score alongside its answer.
 4.  **Confidence Filtering**: Responses with a confidence score below **0.5** are automatically rejected ("Nothing interesting here") to prevent AI hallucinations from conversational noise.
 5.  **Screen-Share Stealth**: The UI is hidden from screen capture using native macOS APIs.
 
@@ -24,7 +24,7 @@ Stealth Sidekick works as a silent listener. It maintains a **45-second rolling 
 | **Framework** | Tauri v2 (Rust + React + Tailwind) |
 | **Audio Capture** | `cpal` (Rust) tapping into BlackHole 2ch |
 | **Transcription** | `whisper-rs` (Native Rust bindings to `whisper.cpp`) |
-| **Intelligence** | Gemini 1.5 Flash (via Structured JSON Schema) |
+| **Intelligence** | Gemini 2.5 Flash (via Structured JSON Schema) |
 
 ---
 
@@ -83,7 +83,7 @@ You can manage settings directly in the app via the **Settings View** (accessibl
 
 1.  **`.env`**: Stores core configuration:
     -   `GEMINI_API_KEY`: API key from [Google AI Studio](https://aistudio.google.com/).
-    -   `GEMINI_MODEL`: Choose between `gemini-2.0-flash`, `gemini-1.5-flash`, etc.
+    -   `GEMINI_MODEL`: Choose between `gemini-2.5-flash-lite`, `gemini-2.5-flash`, etc.
     -   `WHISPER_GGML_PATH`: Absolute path to a Whisper GGML model `.bin` file.
     -   `GLOBAL_HOTKEY`: The shortcut to trigger analysis (e.g., `Command+Shift+K`).
     -   `BUFFER_DURATION_SECS`: How many seconds of audio to keep in memory (default: 45).

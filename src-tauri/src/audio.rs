@@ -26,6 +26,7 @@ pub struct AudioState {
     pub last_transcript: Arc<Mutex<String>>,
     pub last_updated: Arc<Mutex<std::time::Instant>>,
     pub is_recording: Arc<std::sync::atomic::AtomicBool>,
+    pub silence_threshold: f32,
     // We keep the stream around so it doesn't get dropped and stop recording
     pub _stream: cpal::Stream,
 }
@@ -118,6 +119,7 @@ impl AudioState {
         let min_chars = config.detect_question_min_chars;
         let app_handle_bg = app_handle.clone();
         let is_recording_bg = is_recording.clone();
+        let silence_threshold = config.silence_threshold;
 
         std::thread::spawn(move || {
             let mut last_detected_text = String::new();
@@ -143,7 +145,7 @@ impl AudioState {
                     continue;
                 }
 
-                if let Ok(text) = run_transcription(&ctx_bg, &samples) {
+                if let Ok(text) = run_transcription(&ctx_bg, &samples, silence_threshold) {
                     if !text.is_empty() {
                         let mut t_guard = transcript_bg.lock().unwrap();
                         let mut u_guard = updated_bg.lock().unwrap();
@@ -176,6 +178,7 @@ impl AudioState {
             last_transcript,
             last_updated,
             is_recording,
+            silence_threshold: config.silence_threshold,
             _stream: stream,
         })
     }
@@ -247,7 +250,11 @@ fn write_input_data_i16(
     write_input_data(&float_input, buffer, input_rate, max_samples);
 }
 
-fn run_transcription(ctx: &WhisperContext, samples: &[f32]) -> Result<String, String> {
+fn run_transcription(
+    ctx: &WhisperContext,
+    samples: &[f32],
+    threshold: f32,
+) -> Result<String, String> {
     let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
 
     // Performance: Use more threads for Mac (8 is usually safe for M-series)
@@ -272,6 +279,12 @@ fn run_transcription(ctx: &WhisperContext, samples: &[f32]) -> Result<String, St
     params.set_print_timestamps(false);
 
     if samples.is_empty() {
+        return Ok(String::new());
+    }
+
+    // Silence detection
+    let rms: f32 = (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt();
+    if rms < threshold {
         return Ok(String::new());
     }
 
@@ -314,7 +327,11 @@ pub fn transcribe_latest(audio_state: State<AudioState>) -> Result<String, Strin
         return Ok("".to_string());
     }
 
-    let text = run_transcription(&audio_state.context, &samples)?;
+    let text = run_transcription(
+        &audio_state.context,
+        &samples,
+        audio_state.silence_threshold,
+    )?;
 
     // Update cache
     let mut t_guard = audio_state.last_transcript.lock().unwrap();

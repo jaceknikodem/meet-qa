@@ -6,7 +6,7 @@ You are assisting in building **Meet-QA**, a "Stealth Sidekick" macOS applicatio
 - **Core:** Tauri v2 (Rust + TypeScript)
 - **Audio:** `cpal` (Rust) capturing from **BlackHole 2ch**
 - **Transcription:** `whisper-rs` (Native Rust bindings)
-- **LLM:** Gemini 1.5 Flash (SSE Streaming)
+- **LLM:** Gemini 2.5 Flash (SSE Streaming)
 - **UI:** React + Tailwind CSS (Frameless, translucent HUD)
 
 ---

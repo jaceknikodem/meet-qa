@@ -119,6 +119,7 @@ GLOBAL_HOTKEY={}
 BUFFER_DURATION_SECS={}
 DETECT_QUESTION_MODEL={}
 DETECT_QUESTION_MIN_CHARS={}
+SILENCE_THRESHOLD={}
 "#,
         new_config.gemini_api_key,
         new_config.whisper_ggml_path,
@@ -126,7 +127,8 @@ DETECT_QUESTION_MIN_CHARS={}
         new_config.global_hotkey,
         new_config.buffer_duration_secs,
         new_config.detect_question_model.unwrap_or_default(),
-        new_config.detect_question_min_chars
+        new_config.detect_question_min_chars,
+        new_config.silence_threshold
     );
 
     std::fs::write(&env_path, env_content).map_err(|e| e.to_string())?;
@@ -207,6 +209,7 @@ pub fn run() {
             detect_question_model: None,
             detect_question_min_chars: 50,
             min_confidence: 0.5,
+            silence_threshold: 0.005,
             error: Some(e),
          };
          c
