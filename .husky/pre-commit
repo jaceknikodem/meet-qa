@@ -1,0 +1,7 @@
+echo "🧪 Running Frontend Tests..."
+npm run test -- --run
+
+echo "🦀 Running Backend Tests..."
+# Ensure cargo is in PATH for the pre-commit environment
+export PATH="$PATH:$HOME/.cargo/bin"
+cd src-tauri && cargo test

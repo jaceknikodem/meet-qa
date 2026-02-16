@@ -216,3 +216,59 @@ pub fn get_latest_audio(_state: State<AudioState>) -> Result<String, String> {
 pub fn transcribe_audio(_wav_path: String) -> Result<String, String> {
     Err("Legacy transcription disabled in favor of native transcription".to_string())
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::VecDeque;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn test_write_input_data_push() {
+        let buffer = Arc::new(Mutex::new(VecDeque::new()));
+        let input = vec![1.0, 2.0, 3.0];
+        let input_rate = 16000;
+        let max_samples = 10;
+
+        write_input_data(&input, &buffer, input_rate, max_samples);
+
+        let guard = buffer.lock().unwrap();
+        assert_eq!(guard.len(), 3);
+        assert_eq!(guard[0], 1.0);
+        assert_eq!(guard[2], 3.0);
+    }
+
+    #[test]
+    fn test_write_input_data_max_samples() {
+        let buffer = Arc::new(Mutex::new(VecDeque::new()));
+        let input = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let input_rate = 16000;
+        let max_samples = 3;
+
+        write_input_data(&input, &buffer, input_rate, max_samples);
+
+        let guard = buffer.lock().unwrap();
+        assert_eq!(guard.len(), 3);
+        // Should keep the last 3 samples
+        assert_eq!(guard[0], 3.0);
+        assert_eq!(guard[2], 5.0);
+    }
+
+    #[test]
+    fn test_write_input_data_resampling() {
+        let buffer = Arc::new(Mutex::new(VecDeque::new()));
+        let input = vec![1.0, 2.0, 3.0, 4.0];
+        let input_rate = 32000; // 2x the standard rate
+        let max_samples = 10;
+
+        write_input_data(&input, &buffer, input_rate, max_samples);
+
+        let guard = buffer.lock().unwrap();
+        // At 32k -> 16k, we should skip every other sample
+        // index += 2.0
+        // index 0: 1.0
+        // index 2: 3.0
+        assert_eq!(guard.len(), 2);
+        assert_eq!(guard[0], 1.0);
+        assert_eq!(guard[1], 3.0);
+    }
+}

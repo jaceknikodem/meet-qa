@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { parseGeminiStreamChunk } from "./utils/gemini";
 
 interface AppConfig {
   api_key: string;
@@ -96,18 +97,10 @@ function App() {
           buffer = lines.pop() || "";
 
           for (const line of lines) {
-            const trimmedLine = line.trim();
-            if (!trimmedLine || !trimmedLine.startsWith("data: ")) continue;
-
-            try {
-              const json = JSON.parse(trimmedLine.substring(6));
-              const textPart = json.candidates?.[0]?.content?.parts?.[0]?.text;
-              if (textPart) {
-                fullAnswer += textPart;
-                setResponse(fullAnswer);
-              }
-            } catch (e) {
-              // Not a full JSON or heartbeat
+            const textPart = parseGeminiStreamChunk(line);
+            if (textPart) {
+              fullAnswer += textPart;
+              setResponse(fullAnswer);
             }
           }
         }
