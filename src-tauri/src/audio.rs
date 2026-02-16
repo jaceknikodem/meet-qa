@@ -1,3 +1,4 @@
+use crate::config::Config;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -16,7 +17,7 @@ unsafe impl Send for AudioState {}
 unsafe impl Sync for AudioState {}
 
 impl AudioState {
-    pub fn new() -> Result<Self, anyhow::Error> {
+    pub fn new(config: &Config) -> Result<Self, anyhow::Error> {
         let host = cpal::default_host();
 
         // Try to find the default input device
@@ -30,15 +31,12 @@ impl AudioState {
             device.name().unwrap_or("unknown".to_string())
         );
 
-        let config = device.default_input_config()?;
-        let input_sample_rate = config.sample_rate().0;
+        let stream_config = device.default_input_config()?;
+        let input_sample_rate = stream_config.sample_rate().0;
         println!("Input Sample Rate: {}", input_sample_rate);
 
         // Read duration from config
-        let duration_secs = std::env::var("BUFFER_DURATION_SECS")
-            .unwrap_or_else(|_| "45".to_string())
-            .parse::<usize>()
-            .unwrap_or(45);
+        let duration_secs = config.buffer_duration_secs;
 
         let max_samples = (SAMPLE_RATE as usize) * duration_secs;
 
@@ -53,9 +51,9 @@ impl AudioState {
             eprintln!("an error occurred on stream: {}", err);
         };
 
-        let stream = match config.sample_format() {
+        let stream = match stream_config.sample_format() {
             cpal::SampleFormat::F32 => device.build_input_stream(
-                &config.into(),
+                &stream_config.into(),
                 move |data: &[f32], _: &_| {
                     write_input_data(data, &buffer_clone, input_sample_rate, max_samples)
                 },
@@ -63,7 +61,7 @@ impl AudioState {
                 None,
             )?,
             cpal::SampleFormat::I16 => device.build_input_stream(
-                &config.into(),
+                &stream_config.into(),
                 move |data: &[i16], _: &_| {
                     write_input_data_i16(data, &buffer_clone, input_sample_rate, max_samples)
                 },
@@ -150,9 +148,8 @@ pub fn get_latest_audio(state: State<AudioState>) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn transcribe_audio(wav_path: String) -> Result<String, String> {
-    let model_path = std::env::var("WHISPER_GGML_PATH")
-        .map_err(|_| "WHISPER_GGML_PATH not set environment variable".to_string())?;
+pub fn transcribe_audio(wav_path: String, config: State<Config>) -> Result<String, String> {
+    let model_path = &config.whisper_ggml_path;
 
     // Execute whisper-cli
     // We assume it prints to stdout by default or we use -otxt?

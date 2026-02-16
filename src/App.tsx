@@ -6,6 +6,7 @@ interface AppConfig {
   api_key: string;
   model: string;
   global_hotkey: string;
+  prompt: string;
 }
 
 function App() {
@@ -58,7 +59,7 @@ function App() {
         setResponse("Thinking...");
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${currentConfig.model}:generateContent?key=${currentConfig.api_key}`;
 
-        const prompt = `You are a live meeting sidekick. Use the provided transcript to answer the most recent question or comment on the most recent claim. Make the answer 2-3 sentences long.\n\nTranscript:\n${text}`;
+        const prompt = `${currentConfig.prompt}\n\nTranscript:\n${text}`;
 
         const apiRes = await fetch(geminiUrl, {
           method: "POST",

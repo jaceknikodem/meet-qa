@@ -1,10 +1,16 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 mod audio;
+mod config;
 use audio::get_latest_audio;
+use config::Config;
 
 struct SessionState {
     filename: String,
 }
+
+use chrono::Local;
+use std::fs::OpenOptions;
+use std::io::Write;
 
 #[tauri::command]
 fn log_session(
@@ -12,10 +18,6 @@ fn log_session(
     answer: String,
     state: tauri::State<SessionState>,
 ) -> Result<(), String> {
-    use chrono::Local;
-    use std::fs::OpenOptions;
-    use std::io::Write;
-
     let logs_dir = std::env::current_dir().unwrap_or_default().join("logs");
     if !logs_dir.exists() {
         std::fs::create_dir_all(&logs_dir).map_err(|e| e.to_string())?;
@@ -40,25 +42,9 @@ fn log_session(
     Ok(())
 }
 
-#[derive(serde::Serialize)]
-struct AppConfig {
-    api_key: String,
-    model: String,
-    global_hotkey: String,
-}
-
 #[tauri::command]
-fn get_config() -> Result<AppConfig, String> {
-    let api_key =
-        std::env::var("GEMINI_API_KEY").map_err(|_| "GEMINI_API_KEY not found".to_string())?;
-    let model = std::env::var("GEMINI_MODEL").unwrap_or("gemini-1.5-flash".to_string());
-    let global_hotkey = std::env::var("GLOBAL_HOTKEY").unwrap_or("Command+Shift+K".to_string());
-
-    Ok(AppConfig {
-        api_key,
-        model,
-        global_hotkey,
-    })
+fn get_config(config: tauri::State<Config>) -> Config {
+    config.inner().clone()
 }
 
 use tauri::{Emitter, Manager};
@@ -86,10 +72,10 @@ pub fn run() {
         dotenvy::dotenv().ok();
     }
 
-    use chrono::Local;
+    // Load and validate config
+    let config = Config::load().expect("Failed to load configuration");
 
-    let hotkey_str =
-        std::env::var("GLOBAL_HOTKEY").unwrap_or_else(|_| "Command+Shift+K".to_string());
+    let hotkey_str = &config.global_hotkey;
     let hotkey = hotkey_str
         .parse::<Shortcut>()
         .expect("Failed to parse global shortcut");
@@ -97,29 +83,51 @@ pub fn run() {
     let session_filename = Local::now().format("%Y-%m-%d_%H-%M.md").to_string();
 
     // Initialize audio state. Panic if fails because this is core functionality.
-    let audio_state = audio::AudioState::new().expect("Failed to initialize audio capture");
+    let audio_state = audio::AudioState::new(&config).expect("Failed to initialize audio capture");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_shortcut(hotkey.clone())
-                .expect("Failed to register global shortcut")
-                .with_handler(move |app, shortcut, event| {
-                    if event.state == ShortcutState::Pressed && shortcut == &hotkey {
-                        if let Some(window) = app.get_webview_window("main") {
-                            if window.is_visible().unwrap_or(false) {
-                                let _ = window.hide();
-                            } else {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                                let _ = window.emit("trigger-process", ());
-                            }
+        .setup(|app| {
+            #[cfg(target_os = "macos")]
+            if let Some(window) = app.get_webview_window("main") {
+                window.set_content_protected(true)?;
+            }
+            Ok(())
+        })
+        .plugin({
+            let builder = tauri_plugin_global_shortcut::Builder::new()
+                .with_shortcut(hotkey.clone());
+            
+            match builder {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("Failed to register global shortcut: {:?}", e);
+                    #[cfg(target_os = "macos")]
+                    {
+                        // Open System Settings -> Privacy & Security -> Accessibility
+                        let _ = std::process::Command::new("open")
+                            .arg("x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility")
+                            .spawn();
+                    }
+                    tauri_plugin_global_shortcut::Builder::new()
+                }
+            }
+            .with_handler(move |app, shortcut, event| {
+                if event.state == ShortcutState::Pressed && shortcut == &hotkey {
+                    if let Some(window) = app.get_webview_window("main") {
+                        if window.is_visible().unwrap_or(false) {
+                            let _ = window.hide();
+                        } else {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                            let _ = window.emit("trigger-process", ());
                         }
                     }
-                })
-                .build(),
-        )
+                }
+            })
+            .build()
+        })
+        .manage(config)
         .manage(audio_state)
         .manage(SessionState {
             filename: session_filename,
