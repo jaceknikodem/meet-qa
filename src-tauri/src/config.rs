@@ -1,9 +1,9 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::Path;
 use tauri_plugin_global_shortcut::Shortcut;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     #[serde(rename = "api_key")]
     pub gemini_api_key: String,

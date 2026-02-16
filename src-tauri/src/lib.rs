@@ -12,6 +12,16 @@ use chrono::Local;
 use std::fs::OpenOptions;
 use std::io::Write;
 
+
+#[derive(serde::Deserialize)]
+struct OllamaModel {
+    name: String,
+}
+
+#[derive(serde::Deserialize)]
+struct OllamaTagsResponse {
+    models: Vec<OllamaModel>,
+}
 #[tauri::command]
 fn hide_window(window: tauri::Window) -> Result<(), String> {
     window.hide().map_err(|e| e.to_string())
@@ -85,6 +95,99 @@ fn get_config(config: tauri::State<Config>) -> Config {
     config.inner().clone()
 }
 
+#[tauri::command]
+fn set_recording_state(state: tauri::State<audio::AudioState>, active: bool) {
+    state.is_recording.store(active, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[tauri::command]
+fn update_config(new_config: Config) -> Result<(), String> {
+    let app_data_dir = Config::get_app_data_dir();
+    let env_path = app_data_dir.join(".env");
+    let prompt_path = app_data_dir.join("prompt.txt");
+
+    // Write prompt.txt
+    std::fs::write(&prompt_path, &new_config.prompt).map_err(|e| e.to_string())?;
+
+    // Write .env
+    let env_content = format!(
+        r#"# Stealth Sidekick Configuration
+GEMINI_API_KEY={}
+WHISPER_GGML_PATH={}
+GEMINI_MODEL={}
+GLOBAL_HOTKEY={}
+BUFFER_DURATION_SECS={}
+DETECT_QUESTION_MODEL={}
+DETECT_QUESTION_MIN_CHARS={}
+"#,
+        new_config.gemini_api_key,
+        new_config.whisper_ggml_path,
+        new_config.gemini_model,
+        new_config.global_hotkey,
+        new_config.buffer_duration_secs,
+        new_config.detect_question_model.unwrap_or_default(),
+        new_config.detect_question_min_chars
+    );
+
+    std::fs::write(&env_path, env_content).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn validate_file_path(path: String) -> bool {
+    std::path::Path::new(&path).exists()
+}
+
+#[tauri::command]
+fn validate_hotkey(hotkey: String) -> bool {
+    hotkey.parse::<tauri_plugin_global_shortcut::Shortcut>().is_ok()
+}
+
+#[tauri::command]
+async fn list_ollama_models() -> Result<Vec<String>, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let resp = client
+        .get("http://localhost:11434/api/tags")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+         return Err(format!("Ollama returned status: {}", resp.status()));
+    }
+
+    let tags: OllamaTagsResponse = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(tags.models.into_iter().map(|m| m.name).collect())
+}
+
+#[tauri::command]
+async fn validate_gemini_key(api_key: String) -> Result<bool, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let resp = client
+        .get(&format!(
+            "https://generativelanguage.googleapis.com/v1beta/models?key={}",
+            api_key
+        ))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if resp.status().is_success() {
+        Ok(true)
+    } else {
+         Err(format!("Gemini API Error: {}", resp.status()))
+    }
+}
+
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{Shortcut, ShortcutState};
 
@@ -136,11 +239,9 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 window.set_content_protected(true)?;
                 
-                // If there's an error, show the window immediately so the user knows what to do
-                if config.error.is_some() {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
+                // Show the window on startup
+                let _ = window.show();
+                let _ = window.set_focus();
             }
             Ok(())
         })
@@ -191,7 +292,13 @@ pub fn run() {
             log_session,
             hide_window,
             open_config_dir,
-            quit_app
+            quit_app,
+            set_recording_state,
+            update_config,
+            list_ollama_models,
+            validate_gemini_key,
+            validate_file_path,
+            validate_hotkey
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

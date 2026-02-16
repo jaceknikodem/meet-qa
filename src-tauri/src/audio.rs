@@ -25,6 +25,7 @@ pub struct AudioState {
     pub context: Arc<WhisperContext>,
     pub last_transcript: Arc<Mutex<String>>,
     pub last_updated: Arc<Mutex<std::time::Instant>>,
+    pub is_recording: Arc<std::sync::atomic::AtomicBool>,
     // We keep the stream around so it doesn't get dropped and stop recording
     pub _stream: cpal::Stream,
 }
@@ -60,23 +61,37 @@ impl AudioState {
             eprintln!("an error occurred on stream: {}", err);
         };
 
+        let is_recording = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let is_recording_data = is_recording.clone();
         let stream = match stream_config.sample_format() {
             cpal::SampleFormat::F32 => device.build_input_stream(
                 &stream_config.into(),
                 move |data: &[f32], _: &_| {
-                    write_input_data(data, &buffer_clone, input_sample_rate, max_samples)
+                    if is_recording_data.load(std::sync::atomic::Ordering::Relaxed) {
+                        write_input_data(data, &buffer_clone, input_sample_rate, max_samples)
+                    }
                 },
                 err_fn,
                 None,
             )?,
-            cpal::SampleFormat::I16 => device.build_input_stream(
-                &stream_config.into(),
-                move |data: &[i16], _: &_| {
-                    write_input_data_i16(data, &buffer_clone, input_sample_rate, max_samples)
-                },
-                err_fn,
-                None,
-            )?,
+            cpal::SampleFormat::I16 => {
+                let is_recording_data_i16 = is_recording.clone();
+                device.build_input_stream(
+                    &stream_config.into(),
+                    move |data: &[i16], _: &_| {
+                        if is_recording_data_i16.load(std::sync::atomic::Ordering::Relaxed) {
+                            write_input_data_i16(
+                                data,
+                                &buffer_clone,
+                                input_sample_rate,
+                                max_samples,
+                            )
+                        }
+                    },
+                    err_fn,
+                    None,
+                )?
+            }
             _ => return Err(anyhow::anyhow!("Unsupported sample format")),
         };
 
@@ -102,12 +117,22 @@ impl AudioState {
         let detect_model = config.detect_question_model.clone();
         let min_chars = config.detect_question_min_chars;
         let app_handle_bg = app_handle.clone();
+        let is_recording_bg = is_recording.clone();
 
         std::thread::spawn(move || {
             let mut last_detected_text = String::new();
 
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(5));
+
+                // If detection is not configured, we don't need to burn CPU on background transcription
+                if detect_model.is_none() {
+                    continue;
+                }
+
+                if !is_recording_bg.load(std::sync::atomic::Ordering::Relaxed) {
+                    continue;
+                }
 
                 let samples: Vec<f32> = {
                     let guard = buffer_bg.lock().unwrap();
@@ -150,6 +175,7 @@ impl AudioState {
             context: ctx,
             last_transcript,
             last_updated,
+            is_recording,
             _stream: stream,
         })
     }
@@ -244,6 +270,10 @@ fn run_transcription(ctx: &WhisperContext, samples: &[f32]) -> Result<String, St
     params.set_print_progress(false);
     params.set_print_realtime(false);
     params.set_print_timestamps(false);
+
+    if samples.is_empty() {
+        return Ok(String::new());
+    }
 
     let mut state = ctx.create_state().map_err(|e| e.to_string())?;
     state.full(params, samples).map_err(|e| e.to_string())?;

@@ -59,8 +59,8 @@ To create a downloadable `.dmg` installer:
 npm run tauri build
 ```
 
-This generates a production-ready installer at:  
-`src-tauri/target/release/bundle/dmg/Stealth Sidekick_0.1.0_aarch64.dmg`
+The installer will be generated at:  
+`src-tauri/target/release/bundle/dmg/Stealth Sidekick_X.X.X_aarch64.dmg`
 
 ### Manual Release on GitHub
 1.  Open your repository on GitHub.
@@ -69,35 +69,55 @@ This generates a production-ready installer at:
 
 ---
 
-## ⚙️ Configuration (User Settings)
+## ⚙️ Configuration & Storage
 
-In the production app, configuration is managed in the standard macOS Application Support folder to keep it separate from the app binary.
+Stealth Sidekick stores its settings and logs in a dedicated data directory. The location depends on whether you are running in Development or Production mode.
 
-### Opening Settings
-Hover over the HUD and click the **📁 Folder Icon**. This opens:  
-`~/Library/Application Support/Stealth Sidekick/`
+| Mode | Location |
+| :--- | :--- |
+| **Development** (`npm run dev`) | The project root folder. |
+| **Production** (Installed App) | `~/Library/Application Support/com.tauri.meet-qa/` |
 
-### Customizable Files
-1.  **.env**: Add your credentials:
-    -   `GEMINI_API_KEY`: Your key from [AI Studio](https://aistudio.google.com/).
-    -   `WHISPER_GGML_PATH`: Path to your Whisper `.bin` model.
-    -   `GLOBAL_HOTKEY`: Default is `Command+Shift+K`.
-2.  **prompt.txt**: Edit the "System Instructions" for the AI Sidekick. 
-3.  **logs/**: Every transcript/response pair is saved here as Markdown, including confidence scores and rejection status.
+### Settings Management
+You can manage settings directly in the app via the **Settings View** (accessible from either Normal or Stealth mode).
+
+1.  **`.env`**: Stores core configuration:
+    -   `GEMINI_API_KEY`: API key from [Google AI Studio](https://aistudio.google.com/).
+    -   `GEMINI_MODEL`: Choose between `gemini-2.0-flash`, `gemini-1.5-flash`, etc.
+    -   `WHISPER_GGML_PATH`: Absolute path to a Whisper GGML model `.bin` file.
+    -   `GLOBAL_HOTKEY`: The shortcut to trigger analysis (e.g., `Command+Shift+K`).
+    -   `BUFFER_DURATION_SECS`: How many seconds of audio to keep in memory (default: 45).
+    -   `DETECT_QUESTION_MODEL`: (Optional) Ollama model name for automatic question detection.
+    -   `DETECT_QUESTION_MIN_CHARS`: (Optional) Min text length before auto-triggering.
+2.  **`prompt.txt`**: The system instructions provided to Gemini.
+3.  **`logs/`**: A folder containing timestamped Markdown files of every meeting session.
 
 ---
 
-## ⌨️ Usage
+## ⌨️ Modes & Usage
 
--   **`Cmd + Shift + K`**: Toggle the HUD visibility.
--   **🔴 Power Button**: Closes the application completely (useful for updating config).
--   **📁 Folder Button**: Opens the configuration directory in Finder.
--   **Handle**: Use the HUD body to drag the window around.
+### 🪟 Normal Mode (Default)
+A standard window interface for regular meeting backup. 
+-   **Live Transcript**: Shows a scrolling preview of the meeting in real-time.
+-   **Manual Controls**: Buttons to Start/Stop listening or manually "Ask Gemini".
+-   **Settings Access**: Easy access to the internal config editor.
+
+### 👻 Stealth Mode
+A transparent, non-intrusive HUD designed to overlay existing windows.
+-   **Draggable**: Grab the HUD to reposition it anywhere on your screen.
+-   **Hidden from Screen Capture**: Native macOS APIs ensure this window is invisible to Zoom/Meet participants when you share your screen.
+
+### Controls
+-   **`Cmd + Shift + K`**: Global hotkey to trigger a process / toggle visibility.
+-   **🔴 Quit Button**: Fully exits the application.
+-   **Folder Icon**: Opens the configuration directory in Finder.
+-   **Mode Toggle**: Seamlessly switch between Normal and Stealth views.
 
 ---
 
 ## 🛡 Privacy
 
--   **Zero Logs (Audio)**: Audio is never saved to disk and is purged from RAM every 45 seconds.
--   **Local First**: Transcription happens natively on your machine using Whisper. 
--   **Strict Data Extraction**: Only transcribed text snippets are sent to Gemini, governed by a strict JSON schema to ensure the AI doesn't drift into irrelevant conversation.
+-   **Zero Audio Logs**: Audio is kept strictly in RAM and purged every few seconds. No audio files are ever written to disk.
+-   **Local Transcription**: Speech-to-text happens entirely on your local machine via Whisper.
+-   **Minimal Data Out**: Only the transcribed text of the recent 45s buffer is sent to the Gemini API for analysis.
+-   **Structured Outputs**: Uses Controlled Generation to ensure the AI only answers specific questions or verifies claims, preventing general conversational monitoring.
