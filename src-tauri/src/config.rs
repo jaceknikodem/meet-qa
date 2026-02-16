@@ -51,25 +51,16 @@ impl Config {
             return Err(format!("Whisper model not found at: {}", whisper_ggml_path));
         }
 
-        // Validate whisper-cli availability
-        let whisper_check = std::process::Command::new("which")
-            .arg("whisper-cli")
-            .output();
-
-        match whisper_check {
-            Ok(output) if output.status.success() => {}
-            _ => return Err("whisper-cli not found in PATH. Please install it.".to_string()),
-        }
-
         // Load prompt from file
-        let mut prompt = "You are a live meeting sidekick. Use the provided transcript to answer the most recent question or comment on the most recent claim. Make the answer 2-3 sentences long.".to_string();
+        let mut prompt = String::new();
         if let Ok(cwd) = env::current_dir() {
             let mut path = cwd.clone();
             loop {
                 let prompt_path = path.join("prompt.txt");
                 if prompt_path.exists() {
-                    if let Ok(content) = std::fs::read_to_string(prompt_path) {
+                    if let Ok(content) = std::fs::read_to_string(&prompt_path) {
                         prompt = content.trim().to_string();
+                        println!("Loaded prompt from: {:?}", prompt_path);
                     }
                     break;
                 }
@@ -77,6 +68,11 @@ impl Config {
                     break;
                 }
             }
+        }
+
+        if prompt.is_empty() {
+            // Minimal fallback if no file found
+            prompt = "You are a live meeting sidekick. Answer questions or verify claims from the transcript.".to_string();
         }
 
         Ok(Config {

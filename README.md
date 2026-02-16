@@ -6,12 +6,13 @@ A lightweight, non-intrusive macOS utility designed to provide real-time AI assi
 
 ## ⚡ Core Concept: "The Glass HUD"
 
-Stealth Sidekick works as a silent listener. It maintains a **45-second rolling buffer** of your system audio in RAM. When you're stuck, confused, or just need a quick fact-check, one global hotkey triggers a local transcription and an instant AI response via a translucent HUD.
+Stealth Sidekick works as a silent listener. It maintains a **45-second rolling buffer** of your system audio in RAM. When you're stuck, confused, or just need a quick fact-check, one global hotkey triggers an ultra-fast AI response via a translucent HUD.
 
 ### Key Logic:
 1.  **Always Listening**: Starts capturing system audio immediately on launch (Mono 16kHz). Audio is stored in a circular buffer in memory—it is never saved permanently to disk and is purged every 45 seconds.
-2.  **On-Demand Processing**: CPU-intensive transcription and LLM reasoning *only* happen when triggered.
-3.  **Screen-Share Stealth**: The UI is configured to be hidden from screen capture and stays "Always on Top" for your eyes only.
+2.  **Pre-emptive Transcription**: To ensure sub-second response times, the app transcribes the audio buffer in the background every 5 seconds.
+3.  **On-Demand Intelligence**: LLM reasoning and streaming *only* happen when triggered.
+4.  **Screen-Share Stealth**: The UI is configured to be hidden from screen capture and stays "Always on Top" for your eyes only.
 
 ---
 
@@ -21,8 +22,8 @@ Stealth Sidekick works as a silent listener. It maintains a **45-second rolling 
 | :--- | :--- |
 | **Framework** | Tauri v2 (Rust + React + Tailwind) |
 | **Audio Capture** | `cpal` (Rust) tapping into BlackHole 2ch |
-| **Transcription** | `whisper.cpp` (Local CLI Sidecar) |
-| **Intelligence** | Google Gemini 1.5 Flash (via REST API) |
+| **Transcription** | `whisper-rs` (Native Rust bindings to `whisper.cpp`) |
+| **Intelligence** | Google Gemini 1.5 Flash (**Streaming SSE**) |
 
 ---
 
@@ -31,7 +32,7 @@ Stealth Sidekick works as a silent listener. It maintains a **45-second rolling 
 ### Prerequisites
 
 1.  **Audio Routing**: Install [BlackHole 2ch](https://github.com/ExistentialAudio/BlackHole) and set it as your system output (or use a Multi-Output Device) so the app can "hear" the meeting.
-2.  **Transcription**: Ensure `whisper-cli` is installed and accessible in your `$PATH`.
+2.  **Build Tools**: Ensure `cmake` is installed (required to compile the native Whisper bindings).
 3.  **Rust**: Ensure `cargo` is installed and in your `$PATH`.
 
 ### Configuration
@@ -62,17 +63,17 @@ npm run tauri dev
 
 -   **`Cmd + Shift + K`**:
     -   **Toggle Visibility**: Shows/Hides the transparent HUD.
-    -   **Trigger Process**: When shown, it immediately captures the last 45s of audio, transcribes it, and fetches an AI suggestion.
+    -   **Trigger Process**: When shown, it immediately pulls the latest transcription (often hitting a pre-emptive cache) and streams an AI suggestion in real-time.
 
 ---
 
 ## 🛡 Privacy
 
--   **Zero Logs**: Audio is kept in a volatile RAM buffer. Once purged, it is gone forever.
--   **Local First**: Transcription happens on your machine using Whisper. Only the resulting text snippet is sent to the Gemini API for analysis.
+-   **Zero Logs (Audio)**: Audio is kept in a volatile RAM buffer. Once purged, it is gone forever.
+-   **Local First**: Transcription happens natively on your machine using Whisper. Only the resulting text snippet is sent to the Gemini API for analysis.
 
 ---
 
 ## 📂 Session Logging
 
-The app automatically saves every exchange (Transcript + AI Response) to timestamped Markdown files in the `logs/` directory of the project. Files are named by date (e.g., `logs/2026-02-16_15-34.md`), providing a persistent searchable history of your meetings.
+The app automatically saves every exchange (Transcript + AI Response) to timestamped Markdown files in the `logs/` directory. Files are named by date (e.g., `logs/2026-02-16_15-34.md`), providing a persistent searchable history of your meetings.

@@ -1,12 +1,12 @@
 # AGENTS.md - Meet-QA Development Guide
 
-You are assisting in building **Meet-QA**, a "Stealth Sidekick" macOS application. This app provides real-time AI assistance by listening to meeting audio in a rolling 45-second window without permanent recording.
+You are assisting in building **Meet-QA**, a "Stealth Sidekick" macOS application. This app provides real-time AI assistance by listening to meeting audio in a rolling window without permanent recording.
 
 ## 🛠 Tech Stack Snapshot
 - **Core:** Tauri v2 (Rust + TypeScript)
 - **Audio:** `cpal` (Rust) capturing from **BlackHole 2ch**
-- **Transcription:** `whisper.cpp` (Sidecar binary)
-- **LLM:** Gemini 1.5 Flash (Google Generative AI SDK)
+- **Transcription:** `whisper-rs` (Native Rust bindings)
+- **LLM:** Gemini 1.5 Flash (SSE Streaming)
 - **UI:** React + Tailwind CSS (Frameless, translucent HUD)
 
 ---
@@ -16,22 +16,21 @@ You are assisting in building **Meet-QA**, a "Stealth Sidekick" macOS applicatio
 ### 1. Privacy & "Stealth" First
 - **Zero Disk Policy:** Audio buffers MUST stay in RAM. Do not implement features that save raw audio to disk unless explicitly asked for debugging.
 - **HUD Behavior:** The UI should remain invisible (`opacity-0`) or hidden until triggered by the global hotkey (`Cmd + Shift + K`).
-- **Screen Capture:** Always use macOS-specific flags in Tauri/Rust to exclude the HUD window from screen sharing if possible.
+- **Screen Capture:** Always use macOS-specific flags in Tauri/Rust to exclude the HUD window from screen sharing.
 
 ### 2. Rust Backend (src-tauri)
-- **Audio Thread:** Maintain the high-priority `cpal` stream in a dedicated thread or managed state.
-- **Tauri Commands:** Use descriptive names for commands (e.g., `get_latest_snippet`, `update_settings`).
-- **Error Handling:** Use `Result<T, String>` for commands to ensure error messages propagate to the frontend.
+- **Audio Thread:** Maintain the high-priority `cpal` stream in a dedicated state.
+- **Transcription Management:** Manage `WhisperContext` and background threads for pre-emptive transcription in `src-tauri/src/audio.rs`.
+- **Error Handling:** Use `Result<T, String>` for commands to ensure errors propagate to the React layer.
 
 ### 3. Frontend (React)
 - **HUD Design:** Use `backdrop-filter: blur(10px)` and high-transparency backgrounds.
-- **Streaming:** Prioritize streaming LLM responses to the UI for <1.5s "Time to First Word".
-- **Tailwind:** Keep components modular. Use transition classes for "fade-in/out" effects.
+- **SSE Streaming:** Handle Server-Sent Events from Gemini to ensure <500ms perceived latency.
+- **Latency Benchmarking:** Use `performance.now()` in `App.tsx` to log performance metrics.
 
-### 4. Transcription (whisper.cpp)
-- Assume `whisper-cli` is installed on the host system and available in the PATH.
-- Rust will call this as a subprocess/command, piping audio data to it.
-- Use the `base` model for an optimal balance of speed and accuracy.
+### 4. Transcription (whisper-rs)
+- Use native Rust bindings for `whisper.cpp`. The model is loaded into memory at startup.
+- **Pre-emptive Cache:** A background thread wakes up every 5s to transcribe the rolling buffer, ensuring a "hot cache" for instant trigger response.
 
 ---
 
@@ -39,13 +38,13 @@ You are assisting in building **Meet-QA**, a "Stealth Sidekick" macOS applicatio
 
 ### Setup & Development
 ```bash
+# Install Homebrew dependencies (CMake is required for whisper-rs)
+brew install cmake
+
 # Install dependencies
 npm install
 
-# Ensure whisper-cli is in your path
-which whisper-cli
-
-# Start development (monitors Rust and TS changes)
+# Start development
 npm run tauri dev
 ```
 
