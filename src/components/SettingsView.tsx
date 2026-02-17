@@ -8,8 +8,8 @@ export interface AppConfig {
   prompt: string;
   buffer_duration_secs: number;
   whisper_ggml_path: string;
-  detect_question_model?: string;
-  detect_question_min_chars: number;
+  ollama_model?: string;
+  ollama_min_chars: number;
   min_confidence: number;
   transcription_mode: "speed" | "accuracy";
   error?: string;
@@ -264,8 +264,8 @@ export function SettingsView({ config, defaultMode, onDefaultModeChange, onSave,
                 <button
                   onClick={() => handleChange("transcription_mode", "speed")}
                   className={`px-4 py-1.5 rounded text-xs font-medium transition-all ${formData.transcription_mode === "speed"
-                      ? "bg-blue-600 text-white shadow-lg font-bold"
-                      : "text-gray-400 hover:text-white"
+                    ? "bg-blue-600 text-white shadow-lg font-bold"
+                    : "text-gray-400 hover:text-white"
                     }`}
                 >
                   Speed
@@ -273,8 +273,8 @@ export function SettingsView({ config, defaultMode, onDefaultModeChange, onSave,
                 <button
                   onClick={() => handleChange("transcription_mode", "accuracy")}
                   className={`px-4 py-1.5 rounded text-xs font-medium transition-all ${formData.transcription_mode === "accuracy"
-                      ? "bg-blue-600 text-white shadow-lg font-bold"
-                      : "text-gray-400 hover:text-white"
+                    ? "bg-blue-600 text-white shadow-lg font-bold"
+                    : "text-gray-400 hover:text-white"
                     }`}
                 >
                   Accuracy
@@ -307,8 +307,8 @@ export function SettingsView({ config, defaultMode, onDefaultModeChange, onSave,
                   ) : (
                     <div className="relative">
                       <select
-                        value={formData.detect_question_model || ""}
-                        onChange={(e) => handleChange("detect_question_model", e.target.value)}
+                        value={formData.ollama_model || ""}
+                        onChange={(e) => handleChange("ollama_model", e.target.value)}
                         disabled={ollamaStatus !== "present"}
                         className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-white appearance-none pr-8 disabled:opacity-50"
                       >
@@ -330,9 +330,9 @@ export function SettingsView({ config, defaultMode, onDefaultModeChange, onSave,
                   <input
                     type="number"
                     step="5"
-                    value={formData.detect_question_min_chars || 50}
+                    value={formData.ollama_min_chars || 50}
                     onChange={(e) =>
-                      handleChange("detect_question_min_chars", parseInt(e.target.value) || 50)
+                      handleChange("ollama_min_chars", parseInt(e.target.value) || 50)
                     }
                     className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-white"
                   />

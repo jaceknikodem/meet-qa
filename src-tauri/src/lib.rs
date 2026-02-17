@@ -123,8 +123,8 @@ WHISPER_GGML_PATH={}
 GEMINI_MODEL={}
 GLOBAL_HOTKEY={}
 BUFFER_DURATION_SECS={}
-DETECT_QUESTION_MODEL={}
-DETECT_QUESTION_MIN_CHARS={}
+OLLAMA_MODEL={}
+OLLAMA_MIN_CHARS={}
 SILENCE_THRESHOLD={}
 TRANSCRIPTION_MODE={}
 "#,
@@ -133,8 +133,8 @@ TRANSCRIPTION_MODE={}
         new_config.gemini_model,
         new_config.global_hotkey,
         new_config.buffer_duration_secs,
-        new_config.detect_question_model.unwrap_or_default(),
-        new_config.detect_question_min_chars,
+        new_config.ollama_model.unwrap_or_default(),
+        new_config.ollama_min_chars,
         new_config.silence_threshold,
         new_config.transcription_mode
     );
@@ -214,8 +214,8 @@ pub fn run() {
             buffer_duration_secs: 45,
             whisper_ggml_path: "".to_string(),
             prompt: "".to_string(),
-            detect_question_model: None,
-            detect_question_min_chars: 50,
+            ollama_model: None,
+            ollama_min_chars: 50,
             min_confidence: 0.5,
             silence_threshold: 0.005,
             transcription_mode: "speed".to_string(),

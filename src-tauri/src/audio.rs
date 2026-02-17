@@ -119,8 +119,8 @@ impl AudioState {
         let ctx_bg = ctx.clone();
         let transcript_bg = last_transcript.clone();
         let updated_bg = last_updated.clone();
-        let detect_model = config.detect_question_model.clone();
-        let min_chars = config.detect_question_min_chars;
+        let detect_model = config.ollama_model.clone();
+        let min_chars = config.ollama_min_chars;
         let app_handle_bg = app_handle.clone();
         let is_recording_bg = is_recording.clone();
         let silence_threshold = config.silence_threshold;
