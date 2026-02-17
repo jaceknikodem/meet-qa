@@ -12,6 +12,8 @@ interface NormalViewProps {
     transcript: string;
     meetingContext: string;
     onMeetingContextChange: (val: string) => void;
+    supplementalContext: string;
+    onSupplementalContextChange: (val: string) => void;
     response: StructuredResponse | null;
     isLoading: boolean;
     isRecording: boolean;
@@ -20,6 +22,7 @@ interface NormalViewProps {
     lastMode: "validate" | "answer" | "followup";
     onOpenSettings: () => void;
     onSwitchToStealth: () => void;
+    onClose: () => void;
 }
 
 export function NormalView({
@@ -27,6 +30,8 @@ export function NormalView({
     transcript,
     meetingContext,
     onMeetingContextChange,
+    supplementalContext,
+    onSupplementalContextChange,
     response,
     isLoading,
     isRecording,
@@ -35,10 +40,12 @@ export function NormalView({
     lastMode,
     onOpenSettings,
     onSwitchToStealth,
+    onClose,
 }: NormalViewProps) {
     const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([]);
     const [agendaStatus, setAgendaStatus] = useState<string>("");
     const [audioDevice, setAudioDevice] = useState<string>("");
+    const [isContextExpanded, setIsContextExpanded] = useState(false);
 
     // 0. Fetch Audio Device
     useEffect(() => {
@@ -132,15 +139,23 @@ export function NormalView({
                     <button
                         onClick={onSwitchToStealth}
                         className="p-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 text-white/60 hover:text-white transition-all text-sm flex items-center gap-2"
+                        title="Minimalistic Mode"
                     >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
-                        Stealth Mode
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
                     </button>
                     <button
                         onClick={onOpenSettings}
                         className="p-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 text-white/60 hover:text-white transition-all"
+                        title="Settings"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    </button>
+                    <button
+                        onClick={onClose}
+                        className="p-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 text-white/60 hover:text-white transition-all"
+                        title="Hide Window"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                     </button>
                     <button
                         onClick={() => invoke("quit_app")}
@@ -155,9 +170,46 @@ export function NormalView({
             {/* Main Content Split */}
             <div className="flex-1 flex overflow-hidden">
                 {/* Left: Agenda & Context */}
-                <div className="flex-1 flex flex-col p-6 min-w-0 border-r border-white/5">
-                    <div className="flex flex-col mb-4">
-                        <label className="text-[10px] text-white/40 uppercase font-bold tracking-wider mb-2">Meeting Goals (Tracked Context)</label>
+                <div className="flex-1 flex flex-col p-6 min-w-0 border-r border-white/5 gap-4">
+                    {/* Supplemental Context (Collapsible) */}
+                    <div className="flex flex-col">
+                        <button
+                            onClick={() => setIsContextExpanded(!isContextExpanded)}
+                            className="flex items-center gap-2 text-[10px] text-white/40 uppercase font-bold tracking-wider mb-2 hover:text-white/60 transition-colors w-full"
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="12"
+                                height="12"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="3"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className={`transition-transform duration-200 ${isContextExpanded ? "rotate-90" : ""}`}
+                            >
+                                <path d="m9 18 6-6-6-6" />
+                            </svg>
+                            Reference Context
+                            {supplementalContext.trim() && !isContextExpanded && (
+                                <span className="ml-auto lowercase font-normal italic opacity-50 px-2 py-0.5 bg-white/5 rounded text-[9px]">
+                                    {supplementalContext.split('\n').length} lines content
+                                </span>
+                            )}
+                        </button>
+                        {isContextExpanded && (
+                            <textarea
+                                value={supplementalContext}
+                                onChange={(e) => onSupplementalContextChange(e.target.value)}
+                                placeholder="Paste relevant background, PR descriptions, or previous transcripts here..."
+                                className="w-full h-48 bg-black/40 rounded-xl border border-white/10 p-3 text-sm text-gray-300 focus:outline-none focus:border-blue-500/50 transition-colors resize-none custom-scrollbar animate-in slide-in-from-top-2 duration-200"
+                            />
+                        )}
+                    </div>
+
+                    <div className="flex flex-col">
+                        <label className="text-[10px] text-white/40 uppercase font-bold tracking-wider mb-2">Meeting Goals</label>
                         <textarea
                             value={meetingContext}
                             onChange={(e) => onMeetingContextChange(e.target.value)}

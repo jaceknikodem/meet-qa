@@ -7,6 +7,7 @@ interface StealthViewProps {
     config: AppConfig | null;
     transcript: string;
     meetingContext: string;
+    supplementalContext: string;
     response: StructuredResponse | null;
     isLoading: boolean;
     isRecording: boolean;
@@ -25,6 +26,7 @@ export function StealthView({
     config,
     transcript,
     meetingContext,
+    supplementalContext,
     response,
     isLoading,
     isRecording,
@@ -113,9 +115,15 @@ export function StealthView({
                             KUROKO
                         </div>
                         {meetingContext.trim() && (
-                            <div className="px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 flex items-center gap-1.5">
+                            <div className="px-1.5 py-0.5 rounded-md bg-blue-500/10 border border-blue-500/20 flex items-center gap-1.5">
                                 <div className="w-1 h-1 bg-blue-400 rounded-full"></div>
-                                <span className="text-[9px] text-white/40 font-bold uppercase tracking-wider">Context Active</span>
+                                <span className="text-[9px] text-blue-400 font-bold uppercase tracking-wider">Goals Active</span>
+                            </div>
+                        )}
+                        {supplementalContext.trim() && (
+                            <div className="px-1.5 py-0.5 rounded-md bg-purple-500/10 border border-purple-500/20 flex items-center gap-1.5">
+                                <div className="w-1 h-1 bg-purple-400 rounded-full"></div>
+                                <span className="text-[9px] text-purple-400 font-bold uppercase tracking-wider">Ref Active</span>
                             </div>
                         )}
                         {!isRecording && (

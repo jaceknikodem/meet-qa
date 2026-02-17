@@ -11,8 +11,6 @@ interface AgendaListProps {
 }
 
 export function AgendaList({ items, status }: AgendaListProps) {
-    if (items.length === 0 && !status) return null;
-
     const answeredCount = items.filter(i => i.status === 'answered').length;
 
     return (

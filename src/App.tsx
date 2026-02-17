@@ -43,6 +43,7 @@ function App() {
 
   const [transcript, setTranscript] = useState("");
   const [meetingContext, setMeetingContext] = useState("");
+  const [supplementalContext, setSupplementalContext] = useState("");
   const [response, setResponse] = useState<StructuredResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -138,9 +139,17 @@ function App() {
       const promptInstruction = PROMPTS[mode];
       const basePrompt = activeConfig.prompt || "";
 
-      const prompt = meetingContext.trim()
-        ? `${basePrompt}\n\n${promptInstruction}\n\nMeeting Context:\n${meetingContext}\n\nTranscript:\n${text}`
-        : `${basePrompt}\n\n${promptInstruction}\n\nTranscript:\n${text}`;
+      let prompt = `${basePrompt}\n\n${promptInstruction}\n\n`;
+
+      if (meetingContext.trim()) {
+        prompt += `Meeting Goals:\n${meetingContext}\n\n`;
+      }
+
+      if (supplementalContext.trim()) {
+        prompt += `Supplemental Context:\n${supplementalContext}\n\n`;
+      }
+
+      prompt += `Transcript snippet:\n${text}`;
 
       const geminiResponse = await fetch(geminiUrl, {
         method: "POST",
@@ -252,6 +261,8 @@ function App() {
         transcript={transcript}
         meetingContext={meetingContext}
         onMeetingContextChange={setMeetingContext}
+        supplementalContext={supplementalContext}
+        onSupplementalContextChange={setSupplementalContext}
         response={response}
         isLoading={isLoading}
         isRecording={isRecording}
@@ -263,6 +274,7 @@ function App() {
           setViewMode("settings");
         }}
         onSwitchToStealth={() => setViewMode("stealth")}
+        onClose={handleClose}
       />
     );
   }
@@ -272,6 +284,7 @@ function App() {
       config={config}
       transcript={transcript}
       meetingContext={meetingContext}
+      supplementalContext={supplementalContext}
       response={response}
       isLoading={isLoading}
       isRecording={isRecording}
