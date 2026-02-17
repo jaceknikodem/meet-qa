@@ -4,7 +4,7 @@ use crate::SessionState;
 use chrono::Local;
 use std::fs::OpenOptions;
 use std::io::Write;
-use tauri::{AppHandle, State, Window};
+use tauri::{AppHandle, Manager, State, Window};
 use tauri_plugin_global_shortcut::Shortcut;
 
 #[tauri::command]
@@ -38,6 +38,7 @@ pub fn transcribe_latest(audio_state: State<AudioState>) -> Result<String, Strin
         &samples,
         audio_state.silence_threshold,
         &audio_state.transcription_mode.lock().unwrap(),
+        &audio_state.whisper_language.lock().unwrap(),
     )?;
 
     // Update cache
@@ -47,6 +48,14 @@ pub fn transcribe_latest(audio_state: State<AudioState>) -> Result<String, Strin
     *u_guard = std::time::Instant::now();
 
     Ok(text)
+}
+
+#[tauri::command]
+pub fn get_audio_device(app: tauri::AppHandle) -> String {
+    match app.try_state::<AudioState>() {
+        Some(state) => state.device_name.clone(),
+        None => "No device detected".to_string(),
+    }
 }
 
 #[tauri::command]
@@ -153,6 +162,8 @@ pub fn update_config(new_config: Config, audio_state: State<AudioState>) -> Resu
     {
         let mut mode = audio_state.transcription_mode.lock().unwrap();
         *mode = new_config.transcription_mode.clone();
+        let mut lang = audio_state.whisper_language.lock().unwrap();
+        *lang = new_config.whisper_language.clone();
     }
 
     new_config.save().map_err(|e| e.to_string())?;

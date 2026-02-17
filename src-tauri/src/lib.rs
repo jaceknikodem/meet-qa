@@ -21,7 +21,7 @@ pub fn run() {
     let config = Config::load().unwrap_or_else(|e| {
          let c = Config {
             gemini_api_key: "".to_string(),
-            gemini_model: "gemini-1.5-flash".to_string(),
+            gemini_model: "gemini-2.5-flash".to_string(),
             global_hotkey: "Command+Shift+K".to_string(),
             buffer_duration_secs: 45,
             whisper_ggml_path: "".to_string(),
@@ -31,6 +31,7 @@ pub fn run() {
             min_confidence: 0.5,
             silence_threshold: 0.005,
             transcription_mode: "speed".to_string(),
+            whisper_language: "en".to_string(),
             error: Some(e),
          };
          c
@@ -114,6 +115,7 @@ pub fn run() {
             commands::transcribe_audio,
             commands::transcribe_latest,
             commands::get_config,
+            commands::get_audio_device,
             commands::log_session,
             commands::hide_window,
             commands::open_config_dir,

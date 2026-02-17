@@ -18,32 +18,22 @@ pub struct Config {
     pub min_confidence: f32,
     pub silence_threshold: f32,
     pub transcription_mode: String,
+    pub whisper_language: String,
     pub error: Option<String>,
 }
 
 impl Config {
     pub fn get_app_data_dir() -> std::path::PathBuf {
-        // In development, use the project root (current directory)
+        let mut path = dirs::config_dir()
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
+            .join("Kuroko");
+
         #[cfg(debug_assertions)]
-        return std::env::current_dir().unwrap_or_default();
-
-        #[cfg(not(debug_assertions))]
         {
-            let path = tauri::utils::platform::current_exe()
-                .ok()
-                .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-
-            // On macOS, if we're in a bundle, the AppData is better for config
-            #[cfg(target_os = "macos")]
-            if let Some(home_dir) = dirs::home_dir() {
-                let mut path: std::path::PathBuf = home_dir;
-                path.push("Library/Application Support/Kuroko");
-                return path;
-            }
-
-            path
+            path.push("dev");
         }
+
+        path
     }
 
     pub fn load() -> Result<Self, String> {
@@ -57,9 +47,17 @@ impl Config {
             }
         }
 
-        // Try to load .env from app data dir first
-        let env_path = app_data_dir.join(".env");
-        if !env_path.exists() {
+        // 1. Try project root .env first (convenient for local dev in src-tauri)
+        let local_env = std::env::current_dir().unwrap_or_default().join(".env");
+        let has_local = local_env.exists();
+        let env_path = if has_local {
+            local_env
+        } else {
+            // 2. Fallback to AppData dir (production / auto-save path)
+            app_data_dir.join(".env")
+        };
+
+        if !env_path.exists() && !has_local {
             let default_env = r#"# Kuroko Configuration
 
 # 1. Your Google Gemini API Key (Required)
@@ -71,7 +69,7 @@ GEMINI_API_KEY=
 WHISPER_GGML_PATH=
 
 # 3. AI Model to use (Optional)
-GEMINI_MODEL=gemini-1.5-flash
+GEMINI_MODEL=gemini-2.5-flash
 
 # 4. Global Hotkey (Optional, Default: Command+Shift+K)
 # Format: Command+Shift+K, Alt+Space, etc.
@@ -90,15 +88,19 @@ SILENCE_THRESHOLD=0.004
 # 8. Transcription Mode (Optional, Default: speed)
 # Options: speed, accuracy
 TRANSCRIPTION_MODE=speed
+
+# 9. Whisper Language (Optional, Default: en)
+# Options: en, zh, pl, fr
+WHISPER_LANGUAGE=en
 "#;
-            if let Err(e) = std::fs::write(&env_path, default_env) {
+            if let Err(e) = std::fs::write(&app_data_dir.join(".env"), default_env) {
                 println!("Warning: Failed to create .env template: {}", e);
             }
         }
 
         if env_path.exists() {
             dotenvy::from_path(&env_path).ok();
-            println!("Loaded .env from: {:?}", env_path);
+            println!("Loaded configuration from: {:?}", env_path);
         }
 
         let gemini_api_key = env::var("GEMINI_API_KEY").unwrap_or_default();
@@ -118,7 +120,7 @@ TRANSCRIPTION_MODE=speed
         }
 
         let gemini_model =
-            env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-1.5-flash".to_string());
+            env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-2.5-flash".to_string());
 
         let ollama_model = env::var("OLLAMA_MODEL").ok();
         let ollama_min_chars = env::var("OLLAMA_MIN_CHARS")
@@ -152,6 +154,8 @@ TRANSCRIPTION_MODE=speed
         let transcription_mode =
             env::var("TRANSCRIPTION_MODE").unwrap_or_else(|_| "speed".to_string());
 
+        let whisper_language = env::var("WHISPER_LANGUAGE").unwrap_or_else(|_| "en".to_string());
+
         // Load prompt from file in App Data dir
         let mut prompt = String::new();
         let prompt_path = app_data_dir.join("prompt.txt");
@@ -179,6 +183,7 @@ TRANSCRIPTION_MODE=speed
             min_confidence,
             silence_threshold,
             transcription_mode,
+            whisper_language,
             error,
         })
     }
@@ -204,6 +209,7 @@ OLLAMA_MIN_CHARS={}
 SILENCE_THRESHOLD={}
 TRANSCRIPTION_MODE={}
 MIN_CONFIDENCE={}
+WHISPER_LANGUAGE={}
 "#,
             self.gemini_api_key,
             self.whisper_ggml_path,
@@ -214,7 +220,8 @@ MIN_CONFIDENCE={}
             self.ollama_min_chars,
             self.silence_threshold,
             self.transcription_mode,
-            self.min_confidence
+            self.min_confidence,
+            self.whisper_language
         );
 
         std::fs::write(&env_path, env_content).map_err(|e| e.to_string())?;

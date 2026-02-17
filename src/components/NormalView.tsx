@@ -38,6 +38,12 @@ export function NormalView({
 }: NormalViewProps) {
     const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([]);
     const [agendaStatus, setAgendaStatus] = useState<string>("");
+    const [audioDevice, setAudioDevice] = useState<string>("");
+
+    // 0. Fetch Audio Device
+    useEffect(() => {
+        invoke<string>("get_audio_device").then(setAudioDevice).catch(console.error);
+    }, []);
 
     // 1. Listen for Backend Updates
     useEffect(() => {
@@ -107,6 +113,14 @@ export function NormalView({
                                     <span className="text-white/10 mx-1">•</span>
                                     <span className="text-[10px] uppercase tracking-wider font-mono text-white/30 truncate max-w-[120px]">
                                         {config.model}
+                                    </span>
+                                </>
+                            )}
+                            {audioDevice && (
+                                <>
+                                    <span className="text-white/10 mx-1">•</span>
+                                    <span className="text-[10px] uppercase tracking-wider font-mono text-white/30 truncate max-w-[150px]" title={audioDevice}>
+                                        {audioDevice}
                                     </span>
                                 </>
                             )}

@@ -72,7 +72,7 @@ export function StealthView({
             {/* Main HUD Container - Draggable */}
             <div
                 data-tauri-drag-region
-                className="bg-black/90 backdrop-blur-2xl border border-white/10 rounded-2xl p-6 w-full max-w-4xl shadow-2xl transition-all duration-300 relative group pointer-events-auto"
+                className="bg-black/90 backdrop-blur-2xl border border-white/10 rounded-2xl p-5 w-full max-w-xl shadow-2xl transition-all duration-300 relative group pointer-events-auto"
             >
                 {/* Controls */}
                 <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-all z-20">
@@ -107,7 +107,7 @@ export function StealthView({
                 </div>
 
                 {/* Header */}
-                <div className="flex justify-between items-center mb-4 pr-8">
+                <div className="flex justify-between items-center mb-3 pr-8">
                     <div className="flex items-center gap-3">
                         <div className="text-xs font-bold text-white/50 uppercase tracking-widest">
                             KUROKO
@@ -134,7 +134,7 @@ export function StealthView({
                 </div>
 
                 {/* Content Area */}
-                <div className="space-y-4">
+                <div className="space-y-3">
                     {config?.error && (
                         <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl space-y-3 font-mono text-xs">
                             <div className="text-blue-400 font-bold uppercase tracking-wider">Setup Required</div>

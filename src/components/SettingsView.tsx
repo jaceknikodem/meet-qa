@@ -12,6 +12,7 @@ export interface AppConfig {
   ollama_min_chars: number;
   min_confidence: number;
   transcription_mode: "speed" | "accuracy";
+  whisper_language: string;
   error?: string;
 }
 
@@ -210,7 +211,7 @@ export function SettingsView({ config, defaultMode, onDefaultModeChange, onSave,
                 </label>
                 <div className="relative">
                   <select
-                    value={formData.model || "gemini-1.5-flash"}
+                    value={formData.model || "gemini-2.5-flash-lite"}
                     onChange={(e) => handleChange("model", e.target.value)}
                     className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-white appearance-none pr-8 cursor-pointer"
                   >
@@ -284,6 +285,31 @@ export function SettingsView({ config, defaultMode, onDefaultModeChange, onSave,
                 {formData.transcription_mode === "accuracy"
                   ? "Uses beam search (5 beams). Highly accurate but slower and uses more CPU."
                   : "Uses greedy decoding. Maximum performance and low latency."}
+              </p>
+            </div>
+
+            {/* Whisper Language */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Whisper Language
+              </label>
+              <div className="relative w-fit min-w-[200px]">
+                <select
+                  value={formData.whisper_language || "en"}
+                  onChange={(e) => handleChange("whisper_language", e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-white appearance-none pr-8 cursor-pointer"
+                >
+                  <option value="en">English</option>
+                  <option value="zh">Chinese (Mandarin)</option>
+                  <option value="pl">Polish</option>
+                  <option value="fr">French</option>
+                </select>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-white/50">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                </div>
+              </div>
+              <p className="text-[10px] text-gray-500">
+                The language model will prioritize this language for transcription.
               </p>
             </div>
 

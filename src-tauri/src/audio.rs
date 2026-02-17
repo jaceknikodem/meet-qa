@@ -28,7 +28,9 @@ pub struct AudioState {
     pub is_recording: Arc<std::sync::atomic::AtomicBool>,
     pub silence_threshold: f32,
     pub transcription_mode: Arc<Mutex<String>>,
+    pub whisper_language: Arc<Mutex<String>>,
     pub agenda: Arc<Mutex<Vec<AgendaItem>>>,
+    pub device_name: String,
     // We keep the stream around so it doesn't get dropped and stop recording
     pub _stream: cpal::Stream,
 }
@@ -45,10 +47,8 @@ impl AudioState {
             .default_input_device()
             .ok_or_else(|| anyhow::anyhow!("No input device found"))?;
 
-        println!(
-            "Input device: {}",
-            device.name().unwrap_or("unknown".to_string())
-        );
+        let device_name = device.name().unwrap_or("unknown".to_string());
+        println!("Input device: {}", device_name);
 
         let stream_config = device.default_input_config()?;
         let input_sample_rate = stream_config.sample_rate().0;
@@ -113,6 +113,7 @@ impl AudioState {
         let last_updated = Arc::new(Mutex::new(std::time::Instant::now()));
         let agenda = Arc::new(Mutex::new(Vec::new()));
         let transcription_mode = Arc::new(Mutex::new(config.transcription_mode.clone()));
+        let whisper_language = Arc::new(Mutex::new(config.whisper_language.clone()));
 
         let audio_state = AudioState {
             buffer,
@@ -122,7 +123,9 @@ impl AudioState {
             is_recording,
             silence_threshold: config.silence_threshold,
             transcription_mode,
+            whisper_language,
             agenda,
+            device_name,
             _stream: stream,
         };
 
@@ -141,6 +144,7 @@ impl AudioState {
         let is_recording_bg = self.is_recording.clone();
         let silence_threshold = config.silence_threshold;
         let transcription_mode_bg = self.transcription_mode.clone();
+        let whisper_language_bg = self.whisper_language.clone();
         let agenda_bg = self.agenda.clone();
 
         std::thread::spawn(move || {
@@ -153,6 +157,15 @@ impl AudioState {
                     || !is_recording_bg.load(std::sync::atomic::Ordering::Relaxed)
                 {
                     continue;
+                }
+
+                // Skip if agenda is empty
+                {
+                    let agenda = agenda_bg.lock().unwrap();
+                    if agenda.is_empty() {
+                        let _ = app_handle.emit("agenda-status", "Empty agenda");
+                        continue;
+                    }
                 }
 
                 let samples: Vec<f32> = {
@@ -169,6 +182,7 @@ impl AudioState {
                     &samples,
                     silence_threshold,
                     &transcription_mode_bg.lock().unwrap(),
+                    &whisper_language_bg.lock().unwrap(),
                 ) {
                     let mut t_guard = transcript_bg.lock().unwrap();
                     let mut u_guard = updated_bg.lock().unwrap();
@@ -358,6 +372,7 @@ pub fn run_transcription(
     samples: &[f32],
     threshold: f32,
     mode: &str,
+    language: &str,
 ) -> Result<String, String> {
     let mut params = if mode == "accuracy" {
         FullParams::new(SamplingStrategy::BeamSearch {
@@ -371,8 +386,8 @@ pub fn run_transcription(
     // Performance: Use more threads for Mac (8 is usually safe for M-series)
     params.set_n_threads(8);
 
-    // Speed: Hardcode English to skip language detection
-    params.set_language(Some("en"));
+    // Language setting
+    params.set_language(Some(language));
 
     // Quality: Provide an initial prompt to guide the model towards better punctuation and formatting.
     // This trick is heavily used by apps like Wisprflow to get "magical" results.
