@@ -256,6 +256,7 @@ export function NormalView({
                     <TranscriptionDisplay transcript={transcript} />
 
                     <InsightView
+                        config={config}
                         response={response}
                         isLoading={isLoading}
                         lastMode={lastMode}

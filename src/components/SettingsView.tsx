@@ -194,14 +194,20 @@ export function SettingsView({ config, defaultMode, onDefaultModeChange, onSave,
             {/* System Prompt */}
             <div className="space-y-2">
               <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
-                System Prompt
+                Base System Instructions (Advanced)
               </label>
               <textarea
                 value={formData.prompt || ""}
                 onChange={(e) => handleChange("prompt", e.target.value)}
-                className="w-full h-32 bg-black/40 border border-white/10 rounded px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-white font-mono text-xs leading-relaxed resize-none"
+                className="w-full h-48 bg-black/40 border border-white/10 rounded px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-white font-mono text-xs leading-relaxed resize-none custom-scrollbar"
                 placeholder="You are a helpful assistant..."
               />
+              <p className="text-[10px] text-gray-500 leading-normal">
+                Defines the agent's core persona and <strong>quality filtering rules</strong>.
+                Meeting-specific goals and context are appended to this automatically at runtime.
+                <br />
+                <span className="text-yellow-500/50">⚠ Editing this may affect how strictly the AI filters "fluff" conversation.</span>
+              </p>
             </div>
 
             {/* Model Settings */}

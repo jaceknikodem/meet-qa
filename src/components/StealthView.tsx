@@ -193,10 +193,10 @@ export function StealthView({
                             {(response || isLoading) && (
                                 <div className="space-y-3">
                                     {response && response.confidence < (config?.min_confidence ?? 0.5) ? (
-                                        <div className="py-4 text-center space-y-2">
-                                            <p className="text-gray-500 font-medium">Acked, but no triggers found</p>
+                                        <div className="py-4 text-center space-y-2 opacity-50">
+                                            <p className="text-gray-500 font-medium text-xs uppercase tracking-widest">Filtered: Low Relevance</p>
                                             <p className="text-[10px] text-gray-600 font-mono">
-                                                Confidence: {response.confidence.toFixed(2)} / Threshold: {config?.min_confidence ?? 0.5}
+                                                Confidence: {(response.confidence * 100).toFixed(0)}% (Min: {(config?.min_confidence ?? 0.5) * 100}%)
                                             </p>
                                         </div>
                                     ) : (

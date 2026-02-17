@@ -11,15 +11,15 @@ const RESPONSE_SCHEMA = {
   properties: {
     cleaned_question: {
       type: "string",
-      description: "The core question or claim extracted from the transcript, cleaned of filler words."
+      description: "The core fact, claim, or question identified from the transcript. Restate it clearly."
     },
     answer: {
       type: "string",
-      description: "A concise, direct answer or verification."
+      description: "A comprehensive, fact-rich response. Must include specific numbers, dates, or technical details if applicable. Avoid vague statements."
     },
     confidence: {
       type: "number",
-      description: "How confident you are that there is a meaningful question or claim worth answering (0.0 to 1.0)."
+      description: "Float 0.0-1.0. Score > 0.8 ONLY if the input contains a specific, verifiable claim or a clear question that can be answered with concrete facts. Score < 0.5 for opinions, small talk, or vague statements."
     }
   },
   required: ["cleaned_question", "answer", "confidence"]
@@ -28,9 +28,24 @@ const RESPONSE_SCHEMA = {
 type AIMode = "validate" | "answer" | "followup";
 
 const PROMPTS: Record<AIMode, string> = {
-  validate: "Your task: Identify the most recent significant claim in the transcript and validate it for accuracy and logical consistency. If it is a fact, check it. If it is an opinion, note that.",
-  answer: "Your task: Identify the most recent question in the transcript and answer it directly and concisely.",
-  followup: "Your task: Generate a single, insightful follow-up question based on the transcript context."
+  validate: `GOAL: Fact-Check & Enrich.
+  1. Identify the most recent and robust claim made in the transcript.
+  2. If it's a fact, VERIFY it with specific data (dates, $, percentages).
+  3. If it's an opinion, identify the underlying assumption and provide data that supports or challenges it.
+  4. If it's a misconception, correcting it is your highest priority.
+  5. OUTPUT: A dense, 1-3 sentence verification. No fluff.`,
+
+  answer: `GOAL: Answer with Precision.
+  1. Identify the core question.
+  2. Answer it directly.
+  3. Enforce specificty: prefer "October 2023 at $5.4B" over "Last year for billions".
+  4. If the question is ambiguous, assume the most technical/business context implied.`,
+
+  followup: `GOAL: Drive the Conversation Deeper.
+  1. Analyze what is MISSING from the current discussion.
+  2. Generate a question that forces specificity (e.g., asking for metrics, timelines, or root causes).
+  3. Avoid generic questions like "What do you think?".
+  4. Your question should make the speaker pause and think.`
 };
 
 
