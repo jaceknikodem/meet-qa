@@ -101,7 +101,13 @@ fn set_recording_state(state: tauri::State<audio::AudioState>, active: bool) {
 }
 
 #[tauri::command]
-fn update_config(new_config: Config) -> Result<(), String> {
+fn update_config(new_config: Config, audio_state: tauri::State<audio::AudioState>) -> Result<(), String> {
+    // Update runtime state
+    {
+        let mut mode = audio_state.transcription_mode.lock().unwrap();
+        *mode = new_config.transcription_mode.clone();
+    }
+
     let app_data_dir = Config::get_app_data_dir();
     let env_path = app_data_dir.join(".env");
     let prompt_path = app_data_dir.join("prompt.txt");
@@ -120,6 +126,7 @@ BUFFER_DURATION_SECS={}
 DETECT_QUESTION_MODEL={}
 DETECT_QUESTION_MIN_CHARS={}
 SILENCE_THRESHOLD={}
+TRANSCRIPTION_MODE={}
 "#,
         new_config.gemini_api_key,
         new_config.whisper_ggml_path,
@@ -128,7 +135,8 @@ SILENCE_THRESHOLD={}
         new_config.buffer_duration_secs,
         new_config.detect_question_model.unwrap_or_default(),
         new_config.detect_question_min_chars,
-        new_config.silence_threshold
+        new_config.silence_threshold,
+        new_config.transcription_mode
     );
 
     std::fs::write(&env_path, env_content).map_err(|e| e.to_string())?;
@@ -210,6 +218,7 @@ pub fn run() {
             detect_question_min_chars: 50,
             min_confidence: 0.5,
             silence_threshold: 0.005,
+            transcription_mode: "speed".to_string(),
             error: Some(e),
          };
          c

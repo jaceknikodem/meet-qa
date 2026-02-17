@@ -87,8 +87,8 @@ You can manage settings directly in the app via the **Settings View** (accessibl
     -   `WHISPER_GGML_PATH`: Absolute path to a Whisper GGML model `.bin` file.
     -   `GLOBAL_HOTKEY`: The shortcut to trigger analysis (e.g., `Command+Shift+K`).
     -   `BUFFER_DURATION_SECS`: How many seconds of audio to keep in memory (default: 45).
-    -   `DETECT_QUESTION_MODEL`: (Optional) Ollama model name for automatic question detection.
-    -   `DETECT_QUESTION_MIN_CHARS`: (Optional) Min text length before auto-triggering.
+    -   `OLLAMA_MODEL`: (Optional) Ollama model name for automatic agenda detection.
+    -   `OLLAMA_MIN_CHARS`: (Optional) Min text length before auto-triggering agenda check.
 2.  **`prompt.txt`**: The system instructions provided to Gemini.
 3.  **`logs/`**: A folder containing timestamped Markdown files of every meeting session.
 

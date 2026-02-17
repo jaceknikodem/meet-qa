@@ -27,6 +27,7 @@ pub struct AudioState {
     pub last_updated: Arc<Mutex<std::time::Instant>>,
     pub is_recording: Arc<std::sync::atomic::AtomicBool>,
     pub silence_threshold: f32,
+    pub transcription_mode: Arc<Mutex<String>>,
     pub agenda: Arc<Mutex<Vec<AgendaItem>>>,
     // We keep the stream around so it doesn't get dropped and stop recording
     pub _stream: cpal::Stream,
@@ -111,6 +112,7 @@ impl AudioState {
         let last_transcript = Arc::new(Mutex::new(String::new()));
         let last_updated = Arc::new(Mutex::new(std::time::Instant::now()));
         let agenda = Arc::new(Mutex::new(Vec::new()));
+        let transcription_mode = Arc::new(Mutex::new(config.transcription_mode.clone()));
 
         // Start background pre-emptive transcription thread
         let buffer_bg = buffer.clone();
@@ -122,6 +124,7 @@ impl AudioState {
         let app_handle_bg = app_handle.clone();
         let is_recording_bg = is_recording.clone();
         let silence_threshold = config.silence_threshold;
+        let transcription_mode_bg = transcription_mode.clone();
         let agenda_bg = agenda.clone();
 
         std::thread::spawn(move || {
@@ -145,7 +148,12 @@ impl AudioState {
                     continue;
                 }
 
-                if let Ok(text) = run_transcription(&ctx_bg, &samples, silence_threshold) {
+                if let Ok(text) = run_transcription(
+                    &ctx_bg,
+                    &samples,
+                    silence_threshold,
+                    &transcription_mode_bg.lock().unwrap(),
+                ) {
                     let mut t_guard = transcript_bg.lock().unwrap();
                     let mut u_guard = updated_bg.lock().unwrap();
                     *t_guard = text.clone();
@@ -153,7 +161,11 @@ impl AudioState {
 
                     if let Some(model) = &detect_model {
                         if text.is_empty() {
-                            let _ = app_handle_bg.emit("agenda-status", "Listening... (silence)");
+                            let rms: f32 = (samples.iter().map(|s| s * s).sum::<f32>()
+                                / samples.len() as f32)
+                                .sqrt();
+                            let status = format!("Listening... (silence, rms: {:.6})", rms);
+                            let _ = app_handle_bg.emit("agenda-status", status);
                             continue;
                         }
 
@@ -223,6 +235,7 @@ impl AudioState {
             last_updated,
             is_recording,
             silence_threshold: config.silence_threshold,
+            transcription_mode,
             agenda,
             _stream: stream,
         })
@@ -379,14 +392,26 @@ fn run_transcription(
     ctx: &WhisperContext,
     samples: &[f32],
     threshold: f32,
+    mode: &str,
 ) -> Result<String, String> {
-    let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+    let mut params = if mode == "accuracy" {
+        FullParams::new(SamplingStrategy::BeamSearch {
+            beam_size: 5,
+            patience: 1.0,
+        })
+    } else {
+        FullParams::new(SamplingStrategy::Greedy { best_of: 1 })
+    };
 
     // Performance: Use more threads for Mac (8 is usually safe for M-series)
     params.set_n_threads(8);
 
     // Speed: Hardcode English to skip language detection
     params.set_language(Some("en"));
+
+    // Quality: Provide an initial prompt to guide the model towards better punctuation and formatting.
+    // This trick is heavily used by apps like Wisprflow to get "magical" results.
+    params.set_initial_prompt("The following is a high-quality, punctuated transcript of a professional conversation. It includes proper capitalization and ignores filler words like 'um' or 'uh'.");
 
     // Stability: No context prevents "hallucination loops" in rolling buffers
     params.set_no_context(true);
@@ -413,8 +438,14 @@ fn run_transcription(
         return Ok(String::new());
     }
 
+    // Pre-process audio: DC offset removal and Peak Normalization
+    let mut processed_samples = samples.to_vec();
+    preprocess_audio(&mut processed_samples);
+
     let mut state = ctx.create_state().map_err(|e| e.to_string())?;
-    state.full(params, samples).map_err(|e| e.to_string())?;
+    state
+        .full(params, &processed_samples)
+        .map_err(|e| e.to_string())?;
 
     let num_segments = state.full_n_segments().map_err(|e| e.to_string())?;
     let mut result = String::new();
@@ -424,6 +455,35 @@ fn run_transcription(
         }
     }
     Ok(result.trim().to_string())
+}
+
+fn preprocess_audio(samples: &mut [f32]) {
+    if samples.is_empty() {
+        return;
+    }
+
+    // 1. DC Offset Removal (Centering the waveform at 0)
+    let mean: f32 = samples.iter().sum::<f32>() / samples.len() as f32;
+    for sample in samples.iter_mut() {
+        *sample -= mean;
+    }
+
+    // 2. Peak Normalization (Boosting volume to a consistent level)
+    let mut max_amplitude: f32 = 0.0;
+    for &sample in samples.iter() {
+        let abs_sample = sample.abs();
+        if abs_sample > max_amplitude {
+            max_amplitude = abs_sample;
+        }
+    }
+
+    // Only normalize if there's actually a signal to avoid blowing up floor noise
+    if max_amplitude > 1e-6 {
+        let scale = 0.9 / max_amplitude;
+        for sample in samples.iter_mut() {
+            *sample *= scale;
+        }
+    }
 }
 
 #[tauri::command]
@@ -456,6 +516,7 @@ pub fn transcribe_latest(audio_state: State<AudioState>) -> Result<String, Strin
         &audio_state.context,
         &samples,
         audio_state.silence_threshold,
+        &audio_state.transcription_mode.lock().unwrap(),
     )?;
 
     // Update cache

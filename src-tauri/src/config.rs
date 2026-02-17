@@ -13,10 +13,11 @@ pub struct Config {
     pub buffer_duration_secs: usize,
     pub whisper_ggml_path: String,
     pub prompt: String,
-    pub detect_question_model: Option<String>,
-    pub detect_question_min_chars: usize,
+    pub ollama_model: Option<String>,
+    pub ollama_min_chars: usize,
     pub min_confidence: f32,
     pub silence_threshold: f32,
+    pub transcription_mode: String,
     pub error: Option<String>,
 }
 
@@ -82,9 +83,13 @@ BUFFER_DURATION_SECS=45
 # 6. Minimum confidence for AI response (Optional, Default: 0.5)
 MIN_CONFIDENCE=0.5
 
-# 7. Silence Threshold (Optional, Default: 0.005)
+# 7. Silence Threshold (Optional)
 # Increase if background noise triggers transcription, decrease if quiet speech is cut off.
-SILENCE_THRESHOLD=0.005
+SILENCE_THRESHOLD=0.004
+
+# 8. Transcription Mode (Optional, Default: speed)
+# Options: speed, accuracy
+TRANSCRIPTION_MODE=speed
 "#;
             if let Err(e) = std::fs::write(&env_path, default_env) {
                 println!("Warning: Failed to create .env template: {}", e);
@@ -115,9 +120,8 @@ SILENCE_THRESHOLD=0.005
         let gemini_model =
             env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-1.5-flash".to_string());
 
-        let detect_question_model = env::var("DETECT_QUESTION_MODEL").ok();
-
-        let detect_question_min_chars = env::var("DETECT_QUESTION_MIN_CHARS")
+        let ollama_model = env::var("OLLAMA_MODEL").ok();
+        let ollama_min_chars = env::var("OLLAMA_MIN_CHARS")
             .unwrap_or_else(|_| "50".to_string())
             .parse::<usize>()
             .unwrap_or(50);
@@ -141,9 +145,12 @@ SILENCE_THRESHOLD=0.005
             .unwrap_or(0.5);
 
         let silence_threshold = env::var("SILENCE_THRESHOLD")
-            .unwrap_or_else(|_| "0.005".to_string())
+            .unwrap_or_else(|_| "0.002".to_string())
             .parse::<f32>()
-            .unwrap_or(0.005);
+            .unwrap_or(0.002);
+
+        let transcription_mode =
+            env::var("TRANSCRIPTION_MODE").unwrap_or_else(|_| "speed".to_string());
 
         // Load prompt from file in App Data dir
         let mut prompt = String::new();
@@ -167,10 +174,11 @@ SILENCE_THRESHOLD=0.005
             buffer_duration_secs,
             whisper_ggml_path,
             prompt,
-            detect_question_model,
-            detect_question_min_chars,
+            ollama_model,
+            ollama_min_chars,
             min_confidence,
             silence_threshold,
+            transcription_mode,
             error,
         })
     }

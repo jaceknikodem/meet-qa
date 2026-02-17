@@ -11,6 +11,7 @@ export interface AppConfig {
   detect_question_model?: string;
   detect_question_min_chars: number;
   min_confidence: number;
+  transcription_mode: "speed" | "accuracy";
   error?: string;
 }
 
@@ -252,6 +253,38 @@ export function SettingsView({ config, defaultMode, onDefaultModeChange, onSave,
                   className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-white"
                 />
               </div>
+            </div>
+
+            {/* Transcription Mode */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Transcription Mode
+              </label>
+              <div className="flex bg-black/40 p-1 rounded border border-white/10 w-fit">
+                <button
+                  onClick={() => handleChange("transcription_mode", "speed")}
+                  className={`px-4 py-1.5 rounded text-xs font-medium transition-all ${formData.transcription_mode === "speed"
+                      ? "bg-blue-600 text-white shadow-lg font-bold"
+                      : "text-gray-400 hover:text-white"
+                    }`}
+                >
+                  Speed
+                </button>
+                <button
+                  onClick={() => handleChange("transcription_mode", "accuracy")}
+                  className={`px-4 py-1.5 rounded text-xs font-medium transition-all ${formData.transcription_mode === "accuracy"
+                      ? "bg-blue-600 text-white shadow-lg font-bold"
+                      : "text-gray-400 hover:text-white"
+                    }`}
+                >
+                  Accuracy
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-500">
+                {formData.transcription_mode === "accuracy"
+                  ? "Uses beam search (5 beams). Highly accurate but slower and uses more CPU."
+                  : "Uses greedy decoding. Maximum performance and low latency."}
+              </p>
             </div>
 
             {/* Detection Settings */}
