@@ -10,9 +10,9 @@ Kuroko works as a silent listener. It maintains a **rolling buffer** of your sys
 
 ### Key Logic:
 1.  **Always Listening**: Starts capturing system audio immediately on launch (Mono 16kHz) via `cpal`. Audio is kept in RAM and purged every 45 seconds.
-2.  **Pre-emptive Transcription**: To ensure sub-second response times, the app transcribes the audio buffer in the background every 5 seconds using `whisper-rs`.
-3.  **Controlled Intelligence**: Uses Gemini 2.5 Flash with **Controlled Generation (Strict JSON)**. The AI is forced to return a structured confidence score alongside its answer.
-4.  **Confidence Filtering**: Responses with a confidence score below **0.5** are automatically rejected ("Nothing interesting here") to prevent AI hallucinations from conversational noise.
+2.  **Intelligent Agenda Tracking**: (Optional) If an Ollama model is configured, the app transcribes and analyzes the audio every 10 seconds to detect if agenda items have been addressed.
+3.  **Controlled Intelligence**: Uses Gemini 2.5 Flash with **Controlled Generation (Strict JSON)** to return structured answers with confidence scores.
+4.  **Confidence Filtering**: Responses with a confidence score below a configurable threshold (default: **0.5**) are automatically rejected to prevent hallucinations.
 5.  **Screen-Share Stealth**: The UI is hidden from screen capture using native macOS APIs.
 
 ---

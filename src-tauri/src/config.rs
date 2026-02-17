@@ -163,7 +163,7 @@ TRANSCRIPTION_MODE=speed
         }
 
         if prompt.is_empty() {
-            prompt = "You are a live meeting sidekick. Answer questions or verify claims from the transcript.".to_string();
+            prompt = "You are Kuroko, a live meeting assistant. Answer questions or verify claims from the transcript.".to_string();
             let _ = std::fs::write(&prompt_path, &prompt);
         }
 
@@ -181,5 +181,43 @@ TRANSCRIPTION_MODE=speed
             transcription_mode,
             error,
         })
+    }
+
+    pub fn save(&self) -> Result<(), String> {
+        let app_data_dir = Self::get_app_data_dir();
+        let env_path = app_data_dir.join(".env");
+        let prompt_path = app_data_dir.join("prompt.txt");
+
+        // Write prompt.txt
+        std::fs::write(&prompt_path, &self.prompt).map_err(|e| e.to_string())?;
+
+        // Write .env
+        let env_content = format!(
+            r#"# Kuroko Configuration
+GEMINI_API_KEY={}
+WHISPER_GGML_PATH={}
+GEMINI_MODEL={}
+GLOBAL_HOTKEY={}
+BUFFER_DURATION_SECS={}
+OLLAMA_MODEL={}
+OLLAMA_MIN_CHARS={}
+SILENCE_THRESHOLD={}
+TRANSCRIPTION_MODE={}
+MIN_CONFIDENCE={}
+"#,
+            self.gemini_api_key,
+            self.whisper_ggml_path,
+            self.gemini_model,
+            self.global_hotkey,
+            self.buffer_duration_secs,
+            self.ollama_model.as_deref().unwrap_or_default(),
+            self.ollama_min_chars,
+            self.silence_threshold,
+            self.transcription_mode,
+            self.min_confidence
+        );
+
+        std::fs::write(&env_path, env_content).map_err(|e| e.to_string())?;
+        Ok(())
     }
 }

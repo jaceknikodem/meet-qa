@@ -3,7 +3,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 const SAMPLE_RATE: u32 = 16000;
@@ -114,18 +114,34 @@ impl AudioState {
         let agenda = Arc::new(Mutex::new(Vec::new()));
         let transcription_mode = Arc::new(Mutex::new(config.transcription_mode.clone()));
 
-        // Start background pre-emptive transcription thread
-        let buffer_bg = buffer.clone();
-        let ctx_bg = ctx.clone();
-        let transcript_bg = last_transcript.clone();
-        let updated_bg = last_updated.clone();
+        let audio_state = AudioState {
+            buffer,
+            context: ctx,
+            last_transcript,
+            last_updated,
+            is_recording,
+            silence_threshold: config.silence_threshold,
+            transcription_mode,
+            agenda,
+            _stream: stream,
+        };
+
+        audio_state.spawn_worker(config, app_handle);
+
+        Ok(audio_state)
+    }
+
+    fn spawn_worker(&self, config: &Config, app_handle: AppHandle) {
+        let buffer_bg = self.buffer.clone();
+        let ctx_bg = self.context.clone();
+        let transcript_bg = self.last_transcript.clone();
+        let updated_bg = self.last_updated.clone();
         let detect_model = config.ollama_model.clone();
         let min_chars = config.ollama_min_chars;
-        let app_handle_bg = app_handle.clone();
-        let is_recording_bg = is_recording.clone();
+        let is_recording_bg = self.is_recording.clone();
         let silence_threshold = config.silence_threshold;
-        let transcription_mode_bg = transcription_mode.clone();
-        let agenda_bg = agenda.clone();
+        let transcription_mode_bg = self.transcription_mode.clone();
+        let agenda_bg = self.agenda.clone();
 
         std::thread::spawn(move || {
             let mut last_detected_text = String::new();
@@ -165,18 +181,18 @@ impl AudioState {
                                 / samples.len() as f32)
                                 .sqrt();
                             let status = format!("Listening... (silence, rms: {:.6})", rms);
-                            let _ = app_handle_bg.emit("agenda-status", status);
+                            let _ = app_handle.emit("agenda-status", status);
                             continue;
                         }
 
                         if text == last_detected_text {
                             let status = format!("Listening... ({} chars, no change)", text.len());
-                            let _ = app_handle_bg.emit("agenda-status", status);
+                            let _ = app_handle.emit("agenda-status", status);
                             continue;
                         }
 
                         if text.len() >= min_chars {
-                            let _ = app_handle_bg.emit("agenda-status", "Scanning agenda...");
+                            let _ = app_handle.emit("agenda-status", "Scanning agenda...");
                             let mut agenda_updates = Vec::new();
                             {
                                 let agenda_items = agenda_bg.lock().unwrap();
@@ -203,42 +219,29 @@ impl AudioState {
                                             update_msgs.push(format!("Goal {}", id));
                                         }
                                     }
-                                    let _ =
-                                        app_handle_bg.emit("agenda-update", agenda_items.clone());
+                                    let _ = app_handle.emit("agenda-update", agenda_items.clone());
                                 }
                                 let status = format!(
                                     "{} updated ({} chars, ollama run)",
                                     update_msgs.join(", "),
                                     text.len()
                                 );
-                                let _ = app_handle_bg.emit("agenda-status", status);
+                                let _ = app_handle.emit("agenda-status", status);
                                 last_detected_text = text.clone();
                             } else {
                                 let status =
                                     format!("No updates ({} chars, ollama run)", text.len());
-                                let _ = app_handle_bg.emit("agenda-status", status);
+                                let _ = app_handle.emit("agenda-status", status);
                                 last_detected_text = text;
                             }
                         } else {
                             let status = format!("Insufficient text ({} chars)", text.len());
-                            let _ = app_handle_bg.emit("agenda-status", status);
+                            let _ = app_handle.emit("agenda-status", status);
                         }
                     }
                 }
             }
         });
-
-        Ok(AudioState {
-            buffer,
-            context: ctx,
-            last_transcript,
-            last_updated,
-            is_recording,
-            silence_threshold: config.silence_threshold,
-            transcription_mode,
-            agenda,
-            _stream: stream,
-        })
     }
 }
 
@@ -320,44 +323,6 @@ fn check_agenda(model: &str, text: &str, items: &[AgendaItem]) -> Vec<(String, S
     updates
 }
 
-/*
-fn check_for_question(model: &str, text: &str) -> bool {
-    let client = reqwest::blocking::Client::new();
-    let prompt = format!(
-        "You are an assistant that detects if a question or a request for help was just asked in a meeting transcript.
-        Analyze the following text and respond with ONLY 'YES' if a question was asked in the LAST 15 SECONDS of the text, otherwise respond with 'NO'.
-
-        Text: \"{}\"",
-        text
-    );
-
-    let req = OllamaRequest {
-        model: model.to_string(),
-        prompt,
-        stream: false,
-    };
-
-    match client
-        .post("http://localhost:11434/api/generate")
-        .json(&req)
-        .send()
-    {
-        Ok(resp) => {
-            if let Ok(ollama_resp) = resp.json::<OllamaResponse>() {
-                let r = ollama_resp.response.trim().to_uppercase();
-                r.contains("YES")
-            } else {
-                false
-            }
-        }
-        Err(e) => {
-            eprintln!("Ollama detection error: {}", e);
-            false
-        }
-    }
-}
-*/
-
 fn write_input_data(
     input: &[f32],
     buffer: &Arc<Mutex<VecDeque<f32>>>,
@@ -388,7 +353,7 @@ fn write_input_data_i16(
     write_input_data(&float_input, buffer, input_rate, max_samples);
 }
 
-fn run_transcription(
+pub fn run_transcription(
     ctx: &WhisperContext,
     samples: &[f32],
     threshold: f32,
@@ -484,65 +449,6 @@ fn preprocess_audio(samples: &mut [f32]) {
             *sample *= scale;
         }
     }
-}
-
-#[tauri::command]
-pub fn transcribe_latest(audio_state: State<AudioState>) -> Result<String, String> {
-    // Check if background transcription is fresh (less than 12 seconds old)
-    {
-        let updated = audio_state.last_updated.lock().unwrap();
-        if updated.elapsed().as_secs() < 12 {
-            let cached = audio_state.last_transcript.lock().unwrap();
-            if !cached.is_empty() {
-                println!(
-                    "Returning pre-emptive cached transcript ({}s old)",
-                    updated.elapsed().as_secs()
-                );
-                return Ok(cached.clone());
-            }
-        }
-    }
-
-    let samples: Vec<f32> = {
-        let guard = audio_state.buffer.lock().map_err(|e| e.to_string())?;
-        guard.iter().cloned().collect()
-    };
-
-    if samples.is_empty() {
-        return Ok("".to_string());
-    }
-
-    let text = run_transcription(
-        &audio_state.context,
-        &samples,
-        audio_state.silence_threshold,
-        &audio_state.transcription_mode.lock().unwrap(),
-    )?;
-
-    // Update cache
-    let mut t_guard = audio_state.last_transcript.lock().unwrap();
-    let mut u_guard = audio_state.last_updated.lock().unwrap();
-    *t_guard = text.clone();
-    *u_guard = std::time::Instant::now();
-
-    Ok(text)
-}
-
-#[tauri::command]
-pub fn get_latest_audio(_state: State<AudioState>) -> Result<String, String> {
-    Err("Direct audio access disabled in favor of native transcription".to_string())
-}
-
-#[tauri::command]
-pub fn transcribe_audio(_wav_path: String) -> Result<String, String> {
-    Err("Legacy transcription disabled in favor of native transcription".to_string())
-}
-#[tauri::command]
-pub fn update_agenda(audio_state: State<AudioState>, items: Vec<AgendaItem>) -> Result<(), String> {
-    let mut guard = audio_state.agenda.lock().unwrap();
-    *guard = items;
-    println!("Updated agenda with {} items", guard.len());
-    Ok(())
 }
 
 #[cfg(test)]

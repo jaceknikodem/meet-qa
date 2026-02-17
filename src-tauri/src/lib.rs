@@ -1,203 +1,15 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 mod audio;
 mod config;
-use audio::get_latest_audio;
+mod commands;
+
 use config::Config;
 
-struct SessionState {
-    filename: String,
+pub struct SessionState {
+    pub filename: String,
 }
 
 use chrono::Local;
-use std::fs::OpenOptions;
-use std::io::Write;
-
-
-#[derive(serde::Deserialize)]
-struct OllamaModel {
-    name: String,
-}
-
-#[derive(serde::Deserialize)]
-struct OllamaTagsResponse {
-    models: Vec<OllamaModel>,
-}
-#[tauri::command]
-fn hide_window(window: tauri::Window) -> Result<(), String> {
-    window.hide().map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn quit_app(app_handle: tauri::AppHandle) {
-    app_handle.exit(0);
-}
-
-#[tauri::command]
-fn log_session(
-    transcript: String,
-    answer: String,
-    state: tauri::State<SessionState>,
-) -> Result<(), String> {
-    let mut logs_dir = Config::get_app_data_dir();
-    logs_dir.push("logs");
-    
-    if !logs_dir.exists() {
-        std::fs::create_dir_all(&logs_dir).map_err(|e| e.to_string())?;
-    }
-
-    let file_path = logs_dir.join(&state.filename);
-
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(file_path)
-        .map_err(|e| e.to_string())?;
-
-    let timestamp = Local::now().format("%H:%M:%S").to_string();
-    let log_entry = format!(
-        "## [{}]\n\n**Transcript:**\n{}\n\n**Sidekick:**\n{}\n\n---\n\n",
-        timestamp, transcript, answer
-    );
-
-    file.write_all(log_entry.as_bytes())
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-#[tauri::command]
-fn open_config_dir() -> Result<(), String> {
-    let config_dir = Config::get_app_data_dir();
-    if !config_dir.exists() {
-        std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg(&config_dir)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("explorer")
-            .arg(&config_dir)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-
-    Ok(())
-}
-
-#[tauri::command]
-fn get_config(config: tauri::State<Config>) -> Config {
-    config.inner().clone()
-}
-
-#[tauri::command]
-fn set_recording_state(state: tauri::State<audio::AudioState>, active: bool) {
-    state.is_recording.store(active, std::sync::atomic::Ordering::Relaxed);
-}
-
-#[tauri::command]
-fn update_config(new_config: Config, audio_state: tauri::State<audio::AudioState>) -> Result<(), String> {
-    // Update runtime state
-    {
-        let mut mode = audio_state.transcription_mode.lock().unwrap();
-        *mode = new_config.transcription_mode.clone();
-    }
-
-    let app_data_dir = Config::get_app_data_dir();
-    let env_path = app_data_dir.join(".env");
-    let prompt_path = app_data_dir.join("prompt.txt");
-
-    // Write prompt.txt
-    std::fs::write(&prompt_path, &new_config.prompt).map_err(|e| e.to_string())?;
-
-    // Write .env
-    let env_content = format!(
-        r#"# Kuroko Configuration
-GEMINI_API_KEY={}
-WHISPER_GGML_PATH={}
-GEMINI_MODEL={}
-GLOBAL_HOTKEY={}
-BUFFER_DURATION_SECS={}
-OLLAMA_MODEL={}
-OLLAMA_MIN_CHARS={}
-SILENCE_THRESHOLD={}
-TRANSCRIPTION_MODE={}
-"#,
-        new_config.gemini_api_key,
-        new_config.whisper_ggml_path,
-        new_config.gemini_model,
-        new_config.global_hotkey,
-        new_config.buffer_duration_secs,
-        new_config.ollama_model.unwrap_or_default(),
-        new_config.ollama_min_chars,
-        new_config.silence_threshold,
-        new_config.transcription_mode
-    );
-
-    std::fs::write(&env_path, env_content).map_err(|e| e.to_string())?;
-
-    Ok(())
-}
-
-#[tauri::command]
-fn validate_file_path(path: String) -> bool {
-    std::path::Path::new(&path).exists()
-}
-
-#[tauri::command]
-fn validate_hotkey(hotkey: String) -> bool {
-    hotkey.parse::<tauri_plugin_global_shortcut::Shortcut>().is_ok()
-}
-
-#[tauri::command]
-async fn list_ollama_models() -> Result<Vec<String>, String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(2))
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let resp = client
-        .get("http://localhost:11434/api/tags")
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if !resp.status().is_success() {
-         return Err(format!("Ollama returned status: {}", resp.status()));
-    }
-
-    let tags: OllamaTagsResponse = resp.json().await.map_err(|e| e.to_string())?;
-    Ok(tags.models.into_iter().map(|m| m.name).collect())
-}
-
-#[tauri::command]
-async fn validate_gemini_key(api_key: String) -> Result<bool, String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let resp = client
-        .get(&format!(
-            "https://generativelanguage.googleapis.com/v1beta/models?key={}",
-            api_key
-        ))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if resp.status().is_success() {
-        Ok(true)
-    } else {
-         Err(format!("Gemini API Error: {}", resp.status()))
-    }
-}
-
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{Shortcut, ShortcutState};
 
@@ -298,21 +110,21 @@ pub fn run() {
             .build()
         })
         .invoke_handler(tauri::generate_handler![
-            get_latest_audio,
-            audio::transcribe_audio,
-            audio::transcribe_latest,
-            get_config,
-            log_session,
-            hide_window,
-            open_config_dir,
-            quit_app,
-            set_recording_state,
-            update_config,
-            list_ollama_models,
-            validate_gemini_key,
-            validate_file_path,
-            validate_hotkey,
-            audio::update_agenda
+            commands::get_latest_audio,
+            commands::transcribe_audio,
+            commands::transcribe_latest,
+            commands::get_config,
+            commands::log_session,
+            commands::hide_window,
+            commands::open_config_dir,
+            commands::quit_app,
+            commands::set_recording_state,
+            commands::update_config,
+            commands::list_ollama_models,
+            commands::validate_gemini_key,
+            commands::validate_file_path,
+            commands::validate_hotkey,
+            commands::update_agenda
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
