@@ -110,7 +110,7 @@ export function StealthView({
                 <div className="flex justify-between items-center mb-4 pr-8">
                     <div className="flex items-center gap-3">
                         <div className="text-xs font-bold text-white/50 uppercase tracking-widest">
-                            STEALTH SIDEKICK
+                            KUROKO
                         </div>
                         {meetingContext.trim() && (
                             <div className="px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 flex items-center gap-1.5">

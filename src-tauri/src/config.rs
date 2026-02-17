@@ -37,7 +37,7 @@ impl Config {
             #[cfg(target_os = "macos")]
             if let Some(home_dir) = dirs::home_dir() {
                 let mut path: std::path::PathBuf = home_dir;
-                path.push("Library/Application Support/Stealth Sidekick");
+                path.push("Library/Application Support/Kuroko");
                 return path;
             }
 
@@ -59,7 +59,7 @@ impl Config {
         // Try to load .env from app data dir first
         let env_path = app_data_dir.join(".env");
         if !env_path.exists() {
-            let default_env = r#"# Stealth Sidekick Configuration
+            let default_env = r#"# Kuroko Configuration
 
 # 1. Your Google Gemini API Key (Required)
 # Get one at: https://aistudio.google.com/

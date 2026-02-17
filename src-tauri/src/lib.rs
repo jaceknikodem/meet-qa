@@ -111,7 +111,7 @@ fn update_config(new_config: Config) -> Result<(), String> {
 
     // Write .env
     let env_content = format!(
-        r#"# Stealth Sidekick Configuration
+        r#"# Kuroko Configuration
 GEMINI_API_KEY={}
 WHISPER_GGML_PATH={}
 GEMINI_MODEL={}

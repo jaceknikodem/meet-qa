@@ -1,6 +1,6 @@
-# AGENTS.md - Meet-QA Development Guide
+# AGENTS.md - Kuroko Development Guide
 
-You are assisting in building **Meet-QA**, a "Stealth Sidekick" macOS application. This app provides real-time AI assistance by listening to meeting audio in a rolling window without permanent recording.
+You are assisting in building **Kuroko**, a silent AI macOS application. This app provides real-time AI assistance by listening to meeting audio in a rolling window without permanent recording.
 
 ## 🛠 Tech Stack Snapshot
 - **Core:** Tauri v2 (Rust + TypeScript)

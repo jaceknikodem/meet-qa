@@ -1,4 +1,4 @@
-# 🎙️ Stealth Sidekick
+# 🎙️ Kuroko
 
 A lightweight, non-intrusive macOS utility designed to provide real-time AI assistance during live meetings without the need for full-session recording or note-taking.
 
@@ -6,7 +6,7 @@ A lightweight, non-intrusive macOS utility designed to provide real-time AI assi
 
 ## ⚡ Core Concept: "The Glass HUD"
 
-Stealth Sidekick works as a silent listener. It maintains a **45-second rolling buffer** of your system audio in RAM. When you're stuck, confused, or just need a quick fact-check, one global hotkey triggers an ultra-fast AI response via a translucent HUD.
+Kuroko works as a silent listener. It maintains a **rolling buffer** of your system audio in RAM. When you're stuck, confused, or just need a quick fact-check, one global hotkey triggers an ultra-fast AI response via a translucent HUD.
 
 ### Key Logic:
 1.  **Always Listening**: Starts capturing system audio immediately on launch (Mono 16kHz) via `cpal`. Audio is kept in RAM and purged every 45 seconds.
@@ -60,7 +60,7 @@ npm run tauri build
 ```
 
 The installer will be generated at:  
-`src-tauri/target/release/bundle/dmg/Stealth Sidekick_X.X.X_aarch64.dmg`
+`src-tauri/target/release/bundle/dmg/Kuroko_X.X.X_aarch64.dmg`
 
 ### Manual Release on GitHub
 1.  Open your repository on GitHub.
@@ -71,12 +71,12 @@ The installer will be generated at:
 
 ## ⚙️ Configuration & Storage
 
-Stealth Sidekick stores its settings and logs in a dedicated data directory. The location depends on whether you are running in Development or Production mode.
+Kuroko stores its settings and logs in a dedicated data directory. The location depends on whether you are running in Development or Production mode.
 
 | Mode | Location |
 | :--- | :--- |
 | **Development** (`npm run dev`) | The project root folder. |
-| **Production** (Installed App) | `~/Library/Application Support/com.tauri.meet-qa/` |
+| **Production** (Installed App) | `~/Library/Application Support/com.kuroko.app/` |
 
 ### Settings Management
 You can manage settings directly in the app via the **Settings View** (accessible from either Normal or Stealth mode).

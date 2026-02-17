@@ -1,5 +1,5 @@
 ---
-description: How to run tests for meet-qa
+description: How to run tests for Kuroko
 ---
 
 # Testing Workflow

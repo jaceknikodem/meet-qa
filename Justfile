@@ -1,4 +1,4 @@
-# Stealth Sidekick - Justfile
+# Kuroko - Justfile
 
 # Default recipe to run the app in development mode
 default: dev
@@ -6,15 +6,15 @@ default: dev
 # Run the app in development mode with a clean slate
 dev:
     @echo "🚀 Cleaning up previous instances..."
-    @pkill tauri-app || true
+    @pkill kuroko || true
     @lsof -ti:1420 | xargs kill -9 2>/dev/null || true
-    @echo "📦 Starting Stealth Sidekick..."
+    @echo "📦 Starting Kuroko..."
     npm run tauri dev
 
 # Clean up all temporary files and build artifacts
 clean:
     @echo "🧹 Cleaning up..."
-    @pkill tauri-app || true
+    @pkill kuroko || true
     rm -rf src-tauri/target
     rm -rf dist
     rm -rf logs/*

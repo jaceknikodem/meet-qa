@@ -3,7 +3,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 const SAMPLE_RATE: u32 = 16000;
@@ -128,14 +128,11 @@ impl AudioState {
             let mut last_detected_text = String::new();
 
             loop {
-                std::thread::sleep(std::time::Duration::from_secs(5));
+                std::thread::sleep(std::time::Duration::from_secs(10));
 
-                // If detection is not configured, we don't need to burn CPU on background transcription
-                if detect_model.is_none() {
-                    continue;
-                }
-
-                if !is_recording_bg.load(std::sync::atomic::Ordering::Relaxed) {
+                if detect_model.is_none()
+                    || !is_recording_bg.load(std::sync::atomic::Ordering::Relaxed)
+                {
                     continue;
                 }
 
@@ -149,60 +146,70 @@ impl AudioState {
                 }
 
                 if let Ok(text) = run_transcription(&ctx_bg, &samples, silence_threshold) {
-                    if !text.is_empty() {
-                        let mut t_guard = transcript_bg.lock().unwrap();
-                        let mut u_guard = updated_bg.lock().unwrap();
-                        *t_guard = text.clone();
-                        *u_guard = std::time::Instant::now();
+                    let mut t_guard = transcript_bg.lock().unwrap();
+                    let mut u_guard = updated_bg.lock().unwrap();
+                    *t_guard = text.clone();
+                    *u_guard = std::time::Instant::now();
 
-                        // Continuous Detection logic
-                        if let Some(model) = &detect_model {
-                            // Only check if we have significant new text to avoid spamming
-                            if text.len() >= min_chars && text != last_detected_text {
-                                // 1. Check Agenda Items First
-                                let mut agenda_updates = Vec::new();
-                                {
-                                    let agenda_items = agenda_bg.lock().unwrap();
-                                    // Make a cheap copy to avoid holding lock during HTTP
-                                    let items_clone = agenda_items.clone();
-                                    if !items_clone.is_empty() {
-                                        let updates = check_agenda(model, &text, &items_clone);
-                                        if !updates.is_empty() {
-                                            agenda_updates = updates;
-                                        }
-                                    }
-                                }
+                    if let Some(model) = &detect_model {
+                        if text.is_empty() {
+                            let _ = app_handle_bg.emit("agenda-status", "Listening... (silence)");
+                            continue;
+                        }
 
-                                if !agenda_updates.is_empty() {
-                                    println!("Agenda updates found: {:?}", agenda_updates);
-                                    // Update State
-                                    {
-                                        let mut agenda_items = agenda_bg.lock().unwrap();
-                                        for (id, answer) in &agenda_updates {
-                                            if let Some(item) =
-                                                agenda_items.iter_mut().find(|i| &i.id == id)
-                                            {
-                                                item.status = "answered".to_string();
-                                                item.answer = Some(answer.clone());
-                                            }
-                                        }
-                                        // Emit event
-                                        let _ = app_handle_bg
-                                            .emit("agenda-update", agenda_items.clone());
+                        if text == last_detected_text {
+                            let status = format!("Listening... ({} chars, no change)", text.len());
+                            let _ = app_handle_bg.emit("agenda-status", status);
+                            continue;
+                        }
+
+                        if text.len() >= min_chars {
+                            let _ = app_handle_bg.emit("agenda-status", "Scanning agenda...");
+                            let mut agenda_updates = Vec::new();
+                            {
+                                let agenda_items = agenda_bg.lock().unwrap();
+                                let items_clone = agenda_items.clone();
+                                if !items_clone.is_empty() {
+                                    let updates = check_agenda(model, &text, &items_clone);
+                                    if !updates.is_empty() {
+                                        agenda_updates = updates;
                                     }
-                                    last_detected_text = text.clone();
-                                }
-                                // 2. General Question Detection (Fallback)
-                                else if check_for_question(model, &text) {
-                                    println!("Question detected via Ollama! Triggering HUD.");
-                                    if let Some(window) = app_handle_bg.get_webview_window("main") {
-                                        let _ = window.show();
-                                        let _ = window.set_focus();
-                                        let _ = window.emit("trigger-process", ());
-                                    }
-                                    last_detected_text = text;
                                 }
                             }
+
+                            if !agenda_updates.is_empty() {
+                                println!("Agenda updates found: {:?}", agenda_updates);
+                                let mut update_msgs = Vec::new();
+                                {
+                                    let mut agenda_items = agenda_bg.lock().unwrap();
+                                    for (id, answer) in &agenda_updates {
+                                        if let Some(item) =
+                                            agenda_items.iter_mut().find(|i| &i.id == id)
+                                        {
+                                            item.status = "answered".to_string();
+                                            item.answer = Some(answer.clone());
+                                            update_msgs.push(format!("Goal {}", id));
+                                        }
+                                    }
+                                    let _ =
+                                        app_handle_bg.emit("agenda-update", agenda_items.clone());
+                                }
+                                let status = format!(
+                                    "{} updated ({} chars, ollama run)",
+                                    update_msgs.join(", "),
+                                    text.len()
+                                );
+                                let _ = app_handle_bg.emit("agenda-status", status);
+                                last_detected_text = text.clone();
+                            } else {
+                                let status =
+                                    format!("No updates ({} chars, ollama run)", text.len());
+                                let _ = app_handle_bg.emit("agenda-status", status);
+                                last_detected_text = text;
+                            }
+                        } else {
+                            let status = format!("Insufficient text ({} chars)", text.len());
+                            let _ = app_handle_bg.emit("agenda-status", status);
                         }
                     }
                 }
@@ -300,12 +307,13 @@ fn check_agenda(model: &str, text: &str, items: &[AgendaItem]) -> Vec<(String, S
     updates
 }
 
+/*
 fn check_for_question(model: &str, text: &str) -> bool {
     let client = reqwest::blocking::Client::new();
     let prompt = format!(
-        "You are an assistant that detects if a question or a request for help was just asked in a meeting transcript. 
+        "You are an assistant that detects if a question or a request for help was just asked in a meeting transcript.
         Analyze the following text and respond with ONLY 'YES' if a question was asked in the LAST 15 SECONDS of the text, otherwise respond with 'NO'.
-        
+
         Text: \"{}\"",
         text
     );
@@ -335,6 +343,7 @@ fn check_for_question(model: &str, text: &str) -> bool {
         }
     }
 }
+*/
 
 fn write_input_data(
     input: &[f32],
@@ -419,10 +428,10 @@ fn run_transcription(
 
 #[tauri::command]
 pub fn transcribe_latest(audio_state: State<AudioState>) -> Result<String, String> {
-    // Check if background transcription is fresh (less than 7 seconds old)
+    // Check if background transcription is fresh (less than 12 seconds old)
     {
         let updated = audio_state.last_updated.lock().unwrap();
-        if updated.elapsed().as_secs() < 7 {
+        if updated.elapsed().as_secs() < 12 {
             let cached = audio_state.last_transcript.lock().unwrap();
             if !cached.is_empty() {
                 println!(
