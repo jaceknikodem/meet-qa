@@ -17,6 +17,7 @@ interface NormalViewProps {
     response: StructuredResponse | null;
     isLoading: boolean;
     isRecording: boolean;
+    volume: number;
     onToggleRecording: () => void;
     onTriggerAI: (mode: "validate" | "answer" | "followup") => void;
     lastMode: "validate" | "answer" | "followup";
@@ -35,6 +36,7 @@ export function NormalView({
     response,
     isLoading,
     isRecording,
+    volume,
     onToggleRecording,
     onTriggerAI,
     lastMode,
@@ -115,6 +117,34 @@ export function NormalView({
                             <span className="text-[10px] uppercase tracking-wider font-medium text-white/50">
                                 {isRecording ? "Listening" : "Paused"}
                             </span>
+
+                            {/* Volume Indicator */}
+                            {isRecording && (
+                                <div className="flex items-center gap-1 h-3 ml-1">
+                                    {[1, 2, 3, 4, 5].map((i) => {
+                                        // Normalize volume to 0-1 range for the bars, but amplify for visibility
+                                        // Using sqrt to make quieter sounds more visible
+                                        const threshold = config?.silence_threshold || 0.005;
+                                        const intensity = Math.min(1, Math.sqrt(volume) / 0.2); // 0.04 RMS => 1.0 intensity
+                                        const isActive = intensity > (i / 5);
+                                        const isReliable = volume > threshold;
+
+                                        return (
+                                            <div
+                                                key={i}
+                                                className={`w-1 rounded-full transition-all duration-150 ${isActive
+                                                    ? (isReliable ? "bg-green-400" : "bg-green-400/30")
+                                                    : "bg-white/10"
+                                                    }`}
+                                                style={{
+                                                    height: `${20 + (i * 15)}%`,
+                                                    boxShadow: isActive && isReliable ? '0 0 4px rgba(74, 222, 128, 0.5)' : 'none'
+                                                }}
+                                            />
+                                        );
+                                    })}
+                                </div>
+                            )}
                             {config?.model && (
                                 <>
                                     <span className="text-white/10 mx-1">•</span>

@@ -66,29 +66,76 @@ impl AudioState {
 
         let is_recording = Arc::new(std::sync::atomic::AtomicBool::new(true));
         let is_recording_data = is_recording.clone();
+
+        let last_volume_emit = Arc::new(Mutex::new(std::time::Instant::now()));
+        let app_handle_audio = app_handle.clone();
+
         let stream = match stream_config.sample_format() {
-            cpal::SampleFormat::F32 => device.build_input_stream(
-                &stream_config.into(),
-                move |data: &[f32], _: &_| {
-                    if is_recording_data.load(std::sync::atomic::Ordering::Relaxed) {
-                        write_input_data(data, &buffer_clone, input_sample_rate, max_samples)
-                    }
-                },
-                err_fn,
-                None,
-            )?,
+            cpal::SampleFormat::F32 => {
+                let last_emit = last_volume_emit.clone();
+                let app = app_handle_audio.clone();
+                device.build_input_stream(
+                    &stream_config.into(),
+                    move |data: &[f32], _: &_| {
+                        if is_recording_data.load(std::sync::atomic::Ordering::Relaxed) {
+                            write_input_data(data, &buffer_clone, input_sample_rate, max_samples);
+
+                            // Emit volume level periodically (~10Hz)
+                            if let Ok(mut last_emit_guard) = last_emit.try_lock() {
+                                if last_emit_guard.elapsed().as_millis() >= 100 {
+                                    let rms = if data.is_empty() {
+                                        0.0
+                                    } else {
+                                        (data.iter().map(|&s| s * s).sum::<f32>()
+                                            / data.len() as f32)
+                                            .sqrt()
+                                    };
+                                    let _ = app.emit("volume-level", rms);
+                                    *last_emit_guard = std::time::Instant::now();
+                                }
+                            }
+                        }
+                    },
+                    err_fn,
+                    None,
+                )?
+            }
             cpal::SampleFormat::I16 => {
                 let is_recording_data_i16 = is_recording.clone();
+                let last_emit = last_volume_emit.clone();
+                let app = app_handle_audio.clone();
+                let buffer_clone_i16 = buffer.clone();
                 device.build_input_stream(
                     &stream_config.into(),
                     move |data: &[i16], _: &_| {
                         if is_recording_data_i16.load(std::sync::atomic::Ordering::Relaxed) {
                             write_input_data_i16(
                                 data,
-                                &buffer_clone,
+                                &buffer_clone_i16,
                                 input_sample_rate,
                                 max_samples,
-                            )
+                            );
+
+                            // Emit volume level periodically (~10Hz)
+                            if let Ok(mut last_emit_guard) = last_emit.try_lock() {
+                                if last_emit_guard.elapsed().as_millis() >= 100 {
+                                    let rms = if data.is_empty() {
+                                        0.0
+                                    } else {
+                                        (data
+                                            .iter()
+                                            .map(|&s| {
+                                                let f = s as f32 / i16::MAX as f32;
+                                                f * f
+                                            })
+                                            .sum::<f32>()
+                                            / data.len() as f32)
+                                            .sqrt()
+                                    };
+                                    let _ = app.emit("volume-level", rms);
+                                    *last_emit_guard = std::time::Instant::now();
+                                }
+                            }
                         }
                     },
                     err_fn,

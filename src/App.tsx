@@ -33,8 +33,6 @@ const PROMPTS: Record<AIMode, string> = {
   followup: "Your task: Generate a single, insightful follow-up question based on the transcript context."
 };
 
-// Polling interval for Normal Mode live transcript
-const LIVE_TRANSCRIPT_INTERVAL_MS = 1000;
 
 function App() {
   const [viewMode, setViewMode] = useState<"stealth" | "normal" | "settings">("normal");
@@ -54,6 +52,7 @@ function App() {
   const [defaultMode, setDefaultMode] = useState<AIMode>(() => {
     return (localStorage.getItem("default_mode") as AIMode) || "answer";
   });
+  const [volume, setVolume] = useState<number>(0);
 
   // Use refs to access latest state in callbacks/effects without causing re-renders loops
   const configRef = useRef(config);
@@ -238,6 +237,16 @@ function App() {
     };
   }, []); // Empty dep array, uses ref for config
 
+  // Volume Listener
+  useEffect(() => {
+    const unlistenVolume = listen<number>("volume-level", (event) => {
+      setVolume(event.payload);
+    });
+    return () => {
+      unlistenVolume.then(f => f());
+    };
+  }, []);
+
   // Render Logic
   if (viewMode === "settings") {
     if (!config) return <div className="text-white">Loading config...</div>;
@@ -269,6 +278,7 @@ function App() {
         onToggleRecording={handleToggleRecording}
         onTriggerAI={(mode) => runGeminiFlow(mode)}
         lastMode={lastMode}
+        volume={volume}
         onOpenSettings={() => {
           setPrevViewMode("normal");
           setViewMode("settings");
@@ -289,6 +299,7 @@ function App() {
       isLoading={isLoading}
       isRecording={isRecording}
       error={error}
+      volume={volume}
       onClose={handleClose}
       onTriggerAI={(mode) => runGeminiFlow(mode)}
       lastMode={lastMode}

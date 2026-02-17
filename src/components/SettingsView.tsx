@@ -13,6 +13,7 @@ export interface AppConfig {
   min_confidence: number;
   transcription_mode: "speed" | "accuracy";
   whisper_language: string;
+  silence_threshold: number;
   error?: string;
 }
 
@@ -242,17 +243,57 @@ export function SettingsView({ config, defaultMode, onDefaultModeChange, onSave,
                 <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
                   Min Confidence (0-1)
                 </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="1"
-                  value={formData.min_confidence || 0.5}
-                  onChange={(e) =>
-                    handleChange("min_confidence", parseFloat(e.target.value) || 0.5)
-                  }
-                  className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-white"
-                />
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={formData.min_confidence || 0.5}
+                    onChange={(e) =>
+                      handleChange("min_confidence", parseFloat(e.target.value) || 0.5)
+                    }
+                    className="flex-1 h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  />
+                  <input
+                    type="number"
+                    step="0.05"
+                    min="0"
+                    max="1"
+                    value={formData.min_confidence || 0.5}
+                    onChange={(e) =>
+                      handleChange("min_confidence", parseFloat(e.target.value) || 0.5)
+                    }
+                    className="w-20 bg-black/40 border border-white/10 rounded px-2 py-1 focus:outline-none focus:border-blue-500 transition-colors text-white text-xs font-mono"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Silence Threshold
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min="0.001"
+                    max="0.05"
+                    step="0.001"
+                    value={formData.silence_threshold || 0.005}
+                    onChange={(e) =>
+                      handleChange("silence_threshold", parseFloat(e.target.value) || 0.005)
+                    }
+                    className="flex-1 h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  />
+                  <input
+                    type="number"
+                    step="0.001"
+                    value={formData.silence_threshold || 0.005}
+                    onChange={(e) =>
+                      handleChange("silence_threshold", parseFloat(e.target.value) || 0.005)
+                    }
+                    className="w-20 bg-black/40 border border-white/10 rounded px-2 py-1 focus:outline-none focus:border-blue-500 transition-colors text-white text-xs font-mono"
+                  />
+                </div>
               </div>
             </div>
 

@@ -11,6 +11,7 @@ interface StealthViewProps {
     response: StructuredResponse | null;
     isLoading: boolean;
     isRecording: boolean;
+    volume: number;
     error: string;
     onClose: () => void;
 
@@ -30,6 +31,7 @@ export function StealthView({
     response,
     isLoading,
     isRecording,
+    volume,
     error,
     onClose,
     onOpenSettings,
@@ -114,6 +116,28 @@ export function StealthView({
                         <div className="text-xs font-bold text-white/50 uppercase tracking-widest">
                             KUROKO
                         </div>
+                        {isRecording && (
+                            <div className="flex items-end gap-0.5 h-2.5">
+                                {[1, 2, 3, 4, 5].map((i) => {
+                                    const threshold = config?.silence_threshold || 0.005;
+                                    const intensity = Math.min(1, Math.sqrt(volume) / 0.2); // 0.04 RMS => 1.0 intensity
+                                    const isActive = intensity > (i / 5);
+                                    const isReliable = volume > threshold;
+                                    return (
+                                        <div
+                                            key={i}
+                                            className={`w-0.5 rounded-full transition-all duration-150 ${isActive
+                                                ? (isReliable ? "bg-green-400" : "bg-green-400/30")
+                                                : "bg-white/10"
+                                                }`}
+                                            style={{
+                                                height: `${20 + (i * 20)}%`,
+                                            }}
+                                        />
+                                    );
+                                })}
+                            </div>
+                        )}
                         {meetingContext.trim() && (
                             <div className="px-1.5 py-0.5 rounded-md bg-blue-500/10 border border-blue-500/20 flex items-center gap-1.5">
                                 <div className="w-1 h-1 bg-blue-400 rounded-full"></div>
