@@ -53,9 +53,27 @@ pub fn transcribe_latest(audio_state: State<AudioState>) -> Result<String, Strin
 #[tauri::command]
 pub fn get_audio_device(app: tauri::AppHandle) -> String {
     match app.try_state::<AudioState>() {
-        Some(state) => state.device_name.clone(),
+        Some(state) => {
+            let guard = state.device_name.lock().unwrap();
+            guard.clone()
+        }
         None => "No device detected".to_string(),
     }
+}
+
+#[tauri::command]
+pub fn list_audio_devices() -> Result<Vec<String>, String> {
+    Ok(AudioState::list_devices())
+}
+
+#[tauri::command]
+pub fn set_audio_device(
+    app: AppHandle,
+    state: State<AudioState>,
+    config: State<Config>,
+    name: String,
+) -> Result<(), String> {
+    state.switch_device(name, app, &config)
 }
 
 #[tauri::command]

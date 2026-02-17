@@ -116,6 +116,8 @@ pub fn run() {
             commands::transcribe_latest,
             commands::get_config,
             commands::get_audio_device,
+            commands::list_audio_devices,
+            commands::set_audio_device,
             commands::log_session,
             commands::hide_window,
             commands::open_config_dir,

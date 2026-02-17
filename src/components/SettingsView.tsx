@@ -57,6 +57,9 @@ export function SettingsView({ config, defaultMode, onDefaultModeChange, onSave,
 
   const [ollamaStatus, setOllamaStatus] = useState<"checking" | "present" | "absent">("checking");
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+  
+  const [audioDevices, setAudioDevices] = useState<string[]>([]);
+  const [selectedDevice, setSelectedDevice] = useState<string>("");
 
   // Initial Checks
   useEffect(() => {
@@ -72,6 +75,10 @@ export function SettingsView({ config, defaultMode, onDefaultModeChange, onSave,
     // Initial validation of path and hotkey
     invoke<boolean>("validate_file_path", { path: config.whisper_ggml_path }).then(valid => setPathValidation(valid ? "valid" : "invalid"));
     invoke<boolean>("validate_hotkey", { hotkey: config.global_hotkey }).then(valid => setHotkeyValidation(valid ? "valid" : "invalid"));
+    
+    // Fetch audio devices
+    invoke<string[]>("list_audio_devices").then(setAudioDevices).catch(console.error);
+    invoke<string>("get_audio_device").then(setSelectedDevice).catch(console.error);
   }, []);
 
   // Auto-Save Effect
@@ -138,6 +145,15 @@ export function SettingsView({ config, defaultMode, onDefaultModeChange, onSave,
       setGeminiValidation("valid");
     } catch (e) {
       setGeminiValidation("invalid");
+    }
+  };
+  
+  const handleDeviceChange = async (deviceName: string) => {
+    try {
+      await invoke("set_audio_device", { name: deviceName });
+      setSelectedDevice(deviceName);
+    } catch (e) {
+      console.error("Failed to set audio device", e);
     }
   };
 
@@ -299,6 +315,29 @@ export function SettingsView({ config, defaultMode, onDefaultModeChange, onSave,
                     }
                     className="w-20 bg-black/40 border border-white/10 rounded px-2 py-1 focus:outline-none focus:border-blue-500 transition-colors text-white text-xs font-mono"
                   />
+                </div>
+              </div>
+            </div>
+
+            {/* Audio Device */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Audio Input Device
+              </label>
+              <div className="relative">
+                <select
+                  value={selectedDevice}
+                  onChange={(e) => handleDeviceChange(e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-white appearance-none pr-8 cursor-pointer text-xs truncate"
+                >
+                  {audioDevices.map((device) => (
+                    <option key={device} value={device}>
+                      {device}
+                    </option>
+                  ))}
+                </select>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-white/50">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
                 </div>
               </div>
             </div>

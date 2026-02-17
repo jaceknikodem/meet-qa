@@ -20,6 +20,12 @@ struct OllamaResponse {
     response: String,
 }
 
+// Wrapper to make cpal::Stream Send/Sync for storage in Mutex
+// Wrapper to make cpal::Stream Send/Sync for storage in Mutex
+pub struct SafeStream(pub cpal::Stream);
+unsafe impl Send for SafeStream {}
+unsafe impl Sync for SafeStream {}
+
 pub struct AudioState {
     pub buffer: Arc<Mutex<VecDeque<f32>>>,
     pub context: Arc<WhisperContext>,
@@ -30,14 +36,9 @@ pub struct AudioState {
     pub transcription_mode: Arc<Mutex<String>>,
     pub whisper_language: Arc<Mutex<String>>,
     pub agenda: Arc<Mutex<Vec<AgendaItem>>>,
-    pub device_name: String,
-    // We keep the stream around so it doesn't get dropped and stop recording
-    pub _stream: cpal::Stream,
+    pub device_name: Arc<Mutex<String>>,
+    pub stream_guard: Arc<Mutex<Option<SafeStream>>>,
 }
-
-// cpal::Stream is not Send/Sync on all platforms, but we just hold it here to keep it alive.
-unsafe impl Send for AudioState {}
-unsafe impl Sync for AudioState {}
 
 impl AudioState {
     pub fn new(config: &Config, app_handle: AppHandle) -> Result<Self, anyhow::Error> {
@@ -47,105 +48,24 @@ impl AudioState {
             .default_input_device()
             .ok_or_else(|| anyhow::anyhow!("No input device found"))?;
 
-        let device_name = device.name().unwrap_or("unknown".to_string());
-        println!("Input device: {}", device_name);
-
-        let stream_config = device.default_input_config()?;
-        let input_sample_rate = stream_config.sample_rate().0;
-        println!("Input Sample Rate: {}", input_sample_rate);
+        let device_name_str = device.name().unwrap_or("unknown".to_string());
+        println!("Input device: {}", device_name_str);
 
         let duration_secs = config.buffer_duration_secs;
         let max_samples = (SAMPLE_RATE as usize) * duration_secs;
 
         let buffer = Arc::new(Mutex::new(VecDeque::with_capacity(max_samples)));
-        let buffer_clone = buffer.clone();
-
-        let err_fn = move |err| {
-            eprintln!("an error occurred on stream: {}", err);
-        };
-
         let is_recording = Arc::new(std::sync::atomic::AtomicBool::new(true));
-        let is_recording_data = is_recording.clone();
 
-        let last_volume_emit = Arc::new(Mutex::new(std::time::Instant::now()));
-        let app_handle_audio = app_handle.clone();
-
-        let stream = match stream_config.sample_format() {
-            cpal::SampleFormat::F32 => {
-                let last_emit = last_volume_emit.clone();
-                let app = app_handle_audio.clone();
-                device.build_input_stream(
-                    &stream_config.into(),
-                    move |data: &[f32], _: &_| {
-                        if is_recording_data.load(std::sync::atomic::Ordering::Relaxed) {
-                            write_input_data(data, &buffer_clone, input_sample_rate, max_samples);
-
-                            // Emit volume level periodically (~10Hz)
-                            if let Ok(mut last_emit_guard) = last_emit.try_lock() {
-                                if last_emit_guard.elapsed().as_millis() >= 100 {
-                                    let rms = if data.is_empty() {
-                                        0.0
-                                    } else {
-                                        (data.iter().map(|&s| s * s).sum::<f32>()
-                                            / data.len() as f32)
-                                            .sqrt()
-                                    };
-                                    let _ = app.emit("volume-level", rms);
-                                    *last_emit_guard = std::time::Instant::now();
-                                }
-                            }
-                        }
-                    },
-                    err_fn,
-                    None,
-                )?
-            }
-            cpal::SampleFormat::I16 => {
-                let is_recording_data_i16 = is_recording.clone();
-                let last_emit = last_volume_emit.clone();
-                let app = app_handle_audio.clone();
-                let buffer_clone_i16 = buffer.clone();
-                device.build_input_stream(
-                    &stream_config.into(),
-                    move |data: &[i16], _: &_| {
-                        if is_recording_data_i16.load(std::sync::atomic::Ordering::Relaxed) {
-                            write_input_data_i16(
-                                data,
-                                &buffer_clone_i16,
-                                input_sample_rate,
-                                max_samples,
-                            );
-
-                            // Emit volume level periodically (~10Hz)
-                            if let Ok(mut last_emit_guard) = last_emit.try_lock() {
-                                if last_emit_guard.elapsed().as_millis() >= 100 {
-                                    let rms = if data.is_empty() {
-                                        0.0
-                                    } else {
-                                        (data
-                                            .iter()
-                                            .map(|&s| {
-                                                let f = s as f32 / i16::MAX as f32;
-                                                f * f
-                                            })
-                                            .sum::<f32>()
-                                            / data.len() as f32)
-                                            .sqrt()
-                                    };
-                                    let _ = app.emit("volume-level", rms);
-                                    *last_emit_guard = std::time::Instant::now();
-                                }
-                            }
-                        }
-                    },
-                    err_fn,
-                    None,
-                )?
-            }
-            _ => return Err(anyhow::anyhow!("Unsupported sample format")),
-        };
-
-        stream.play()?;
+        // Create initial stream
+        let stream = create_stream(
+            &device,
+            &buffer,
+            &is_recording,
+            app_handle.clone(),
+            max_samples,
+        )?;
+        let stream_guard = Arc::new(Mutex::new(Some(SafeStream(stream))));
 
         // Load Whisper model
         println!("Loading Whisper model from: {}", config.whisper_ggml_path);
@@ -161,6 +81,7 @@ impl AudioState {
         let agenda = Arc::new(Mutex::new(Vec::new()));
         let transcription_mode = Arc::new(Mutex::new(config.transcription_mode.clone()));
         let whisper_language = Arc::new(Mutex::new(config.whisper_language.clone()));
+        let device_name = Arc::new(Mutex::new(device_name_str));
 
         let audio_state = AudioState {
             buffer,
@@ -173,12 +94,70 @@ impl AudioState {
             whisper_language,
             agenda,
             device_name,
-            _stream: stream,
+            stream_guard,
         };
 
         audio_state.spawn_worker(config, app_handle);
 
         Ok(audio_state)
+    }
+
+    pub fn list_devices() -> Vec<String> {
+        let host = cpal::default_host();
+        match host.input_devices() {
+            Ok(devices) => devices
+                .map(|d| d.name().unwrap_or("unknown".to_string()))
+                .collect(),
+            Err(_) => vec![],
+        }
+    }
+
+    pub fn switch_device(
+        &self,
+        new_device_name: String,
+        app_handle: AppHandle,
+        config: &Config,
+    ) -> Result<(), String> {
+        let host = cpal::default_host();
+        let devices = host.input_devices().map_err(|e| e.to_string())?;
+
+        let device = devices
+            .into_iter()
+            .find(|d| d.name().unwrap_or("unknown".to_string()) == new_device_name)
+            .ok_or_else(|| "Device not found".to_string())?;
+
+        // Calculate max_samples from config
+        let duration_secs = config.buffer_duration_secs;
+        let max_samples = (SAMPLE_RATE as usize) * duration_secs;
+
+        // Clear buffer when switching devices? Maybe strictly not necessary but safer.
+        {
+            let mut buf_guard = self.buffer.lock().unwrap();
+            buf_guard.clear();
+        }
+
+        let new_stream = create_stream(
+            &device,
+            &self.buffer,
+            &self.is_recording,
+            app_handle,
+            max_samples,
+        )
+        .map_err(|e| e.to_string())?;
+
+        // Swap the stream
+        {
+            let mut stream_guard = self.stream_guard.lock().unwrap();
+            *stream_guard = Some(SafeStream(new_stream));
+        }
+
+        // Update device name
+        {
+            let mut name_guard = self.device_name.lock().unwrap();
+            *name_guard = new_device_name;
+        }
+
+        Ok(())
     }
 
     fn spawn_worker(&self, config: &Config, app_handle: AppHandle) {
@@ -382,6 +361,100 @@ fn check_agenda(model: &str, text: &str, items: &[AgendaItem]) -> Vec<(String, S
         }
     }
     updates
+}
+
+fn create_stream(
+    device: &cpal::Device,
+    buffer: &Arc<Mutex<VecDeque<f32>>>,
+    is_recording: &Arc<std::sync::atomic::AtomicBool>,
+    app_handle: AppHandle,
+    max_samples: usize,
+) -> Result<cpal::Stream, anyhow::Error> {
+    let stream_config = device.default_input_config()?;
+    let input_sample_rate = stream_config.sample_rate().0;
+    println!("Stream Sample Rate: {}", input_sample_rate);
+
+    let buffer_clone = buffer.clone();
+    let is_recording_data = is_recording.clone();
+    let err_fn = move |err| {
+        eprintln!("an error occurred on stream: {}", err);
+    };
+
+    let last_volume_emit = Arc::new(Mutex::new(std::time::Instant::now()));
+
+    let stream = match stream_config.sample_format() {
+        cpal::SampleFormat::F32 => {
+            let last_emit = last_volume_emit.clone();
+            let app = app_handle.clone();
+            device.build_input_stream(
+                &stream_config.into(),
+                move |data: &[f32], _: &_| {
+                    if is_recording_data.load(std::sync::atomic::Ordering::Relaxed) {
+                        write_input_data(data, &buffer_clone, input_sample_rate, max_samples);
+
+                        if let Ok(mut last_emit_guard) = last_emit.try_lock() {
+                            if last_emit_guard.elapsed().as_millis() >= 100 {
+                                let rms = if data.is_empty() {
+                                    0.0
+                                } else {
+                                    (data.iter().map(|&s| s * s).sum::<f32>() / data.len() as f32)
+                                        .sqrt()
+                                };
+                                let _ = app.emit("volume-level", rms);
+                                *last_emit_guard = std::time::Instant::now();
+                            }
+                        }
+                    }
+                },
+                err_fn,
+                None,
+            )?
+        }
+        cpal::SampleFormat::I16 => {
+            let buffer_clone_i16 = buffer_clone.clone();
+            let last_emit = last_volume_emit.clone();
+            let app = app_handle.clone();
+            device.build_input_stream(
+                &stream_config.into(),
+                move |data: &[i16], _: &_| {
+                    if is_recording_data.load(std::sync::atomic::Ordering::Relaxed) {
+                        write_input_data_i16(
+                            data,
+                            &buffer_clone_i16,
+                            input_sample_rate,
+                            max_samples,
+                        );
+
+                        if let Ok(mut last_emit_guard) = last_emit.try_lock() {
+                            if last_emit_guard.elapsed().as_millis() >= 100 {
+                                let rms = if data.is_empty() {
+                                    0.0
+                                } else {
+                                    (data
+                                        .iter()
+                                        .map(|&s| {
+                                            let f = s as f32 / i16::MAX as f32;
+                                            f * f
+                                        })
+                                        .sum::<f32>()
+                                        / data.len() as f32)
+                                        .sqrt()
+                                };
+                                let _ = app.emit("volume-level", rms);
+                                *last_emit_guard = std::time::Instant::now();
+                            }
+                        }
+                    }
+                },
+                err_fn,
+                None,
+            )?
+        }
+        _ => return Err(anyhow::anyhow!("Unsupported sample format")),
+    };
+
+    stream.play()?;
+    Ok(stream)
 }
 
 fn write_input_data(
