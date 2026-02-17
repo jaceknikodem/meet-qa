@@ -6,9 +6,10 @@ interface InsightViewProps {
     response: StructuredResponse | null;
     isLoading: boolean;
     lastMode: "validate" | "answer" | "followup";
+    transcript: string;
 }
 
-export function InsightView({ config, response, isLoading, lastMode }: InsightViewProps) {
+export function InsightView({ config, response, isLoading, lastMode, transcript }: InsightViewProps) {
     const minConfidence = config?.min_confidence ?? 0.5;
     const isLowConfidence = response && response.confidence < minConfidence;
 
@@ -42,11 +43,20 @@ export function InsightView({ config, response, isLoading, lastMode }: InsightVi
                 {response && (
                     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
                         {isLowConfidence ? (
-                            <div className="py-8 text-center space-y-3 opacity-60">
-                                <div className="text-gray-400 font-medium">Nothing significant found in this segment.</div>
-                                <p className="text-[11px] text-gray-500 max-w-xs mx-auto">
-                                    The AI didn't find any factual claims or questions with enough confidence ({(response.confidence * 100).toFixed(0)}% &lt; {(minConfidence * 100).toFixed(0)}%).
-                                </p>
+                            <div className="py-2 space-y-4">
+                                <div className="text-center py-4 space-y-3 opacity-60">
+                                    <div className="text-gray-400 font-medium text-sm">Nothing significant found in this segment.</div>
+                                    <p className="text-[11px] text-gray-500 max-w-xs mx-auto">
+                                        The AI didn't find any factual claims or questions with enough confidence ({(response.confidence * 100).toFixed(0)}% &lt; {(minConfidence * 100).toFixed(0)}%).
+                                    </p>
+                                </div>
+                                <div className="w-full h-px bg-white/5"></div>
+                                <div className="space-y-2">
+                                    <div className="text-[9px] text-white/30 font-bold uppercase tracking-wider">Analyzed Transcript:</div>
+                                    <div className="p-3 bg-white/5 rounded-xl border border-white/5">
+                                        <p className="text-xs text-gray-400 italic leading-relaxed font-mono">"{transcript}"</p>
+                                    </div>
+                                </div>
                             </div>
                         ) : (
                             <>
@@ -61,7 +71,7 @@ export function InsightView({ config, response, isLoading, lastMode }: InsightVi
                                     <div className="text-[10px] text-green-400 font-bold mb-1 uppercase tracking-wider">
                                         {lastMode === "validate" ? "Enrichment" : lastMode === "followup" ? "Suggested Question" : "Answer"}
                                     </div>
-                                    <p className="text-white text-lg leading-relaxed">{response.answer}</p>
+                                    <p className="text-white text-base leading-relaxed">{response.answer}</p>
                                 </div>
                             </>
                         )}

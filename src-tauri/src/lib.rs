@@ -128,7 +128,8 @@ pub fn run() {
             commands::validate_gemini_key,
             commands::validate_file_path,
             commands::validate_hotkey,
-            commands::update_agenda
+            commands::update_agenda,
+            commands::clear_audio_buffer
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

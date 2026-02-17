@@ -79,9 +79,10 @@ function App() {
   const isRecordingRef = useRef(isRecording);
   isRecordingRef.current = isRecording;
 
-  // Load initial config
+  // Load initial config and Clean up on restart
   useEffect(() => {
     invoke<AppConfig>("get_config").then(setConfig).catch(console.error);
+    invoke("clear_audio_buffer").catch(console.error);
   }, []);
 
   const handleDefaultModeChange = (mode: AIMode) => {

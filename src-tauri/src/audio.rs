@@ -21,8 +21,7 @@ struct OllamaResponse {
 }
 
 // Wrapper to make cpal::Stream Send/Sync for storage in Mutex
-// Wrapper to make cpal::Stream Send/Sync for storage in Mutex
-pub struct SafeStream(pub cpal::Stream);
+pub struct SafeStream(#[allow(dead_code)] pub cpal::Stream);
 unsafe impl Send for SafeStream {}
 unsafe impl Sync for SafeStream {}
 
@@ -38,6 +37,7 @@ pub struct AudioState {
     pub agenda: Arc<Mutex<Vec<AgendaItem>>>,
     pub device_name: Arc<Mutex<String>>,
     pub stream_guard: Arc<Mutex<Option<SafeStream>>>,
+    pub max_samples: usize,
 }
 
 impl AudioState {
@@ -95,11 +95,90 @@ impl AudioState {
             agenda,
             device_name,
             stream_guard,
+            max_samples,
         };
 
-        audio_state.spawn_worker(config, app_handle);
+        audio_state.spawn_worker(config, app_handle.clone());
+        audio_state.spawn_buffer_monitor(app_handle);
 
         Ok(audio_state)
+    }
+
+    fn spawn_buffer_monitor(&self, app_handle: AppHandle) {
+        let buffer_bg = self.buffer.clone();
+        let is_recording_bg = self.is_recording.clone();
+        let max_samples = self.max_samples;
+
+        std::thread::spawn(move || {
+            loop {
+                std::thread::sleep(std::time::Duration::from_millis(250));
+
+                if !is_recording_bg.load(std::sync::atomic::Ordering::Relaxed) {
+                    continue;
+                }
+
+                let samples: Vec<f32> = {
+                    let guard = match buffer_bg.lock() {
+                        Ok(g) => g,
+                        Err(_) => continue,
+                    };
+                    guard.iter().cloned().collect()
+                };
+
+                // Fixed 100 buckets spread across the TOTAL possible buffer duration
+                let num_buckets = 100;
+                let bucket_size = max_samples / num_buckets;
+
+                if bucket_size == 0 {
+                    continue;
+                }
+
+                let mut levels = Vec::with_capacity(num_buckets);
+                let current_len = samples.len();
+
+                for i in 0..num_buckets {
+                    let start_idx = i * bucket_size;
+                    let end_idx = (i + 1) * bucket_size;
+
+                    // The 'samples' we have always represent the TAIL of the 45s window
+                    // Calculate where this bucket falls relative to the current live tail
+                    let virtual_start = if max_samples > current_len {
+                        max_samples - current_len
+                    } else {
+                        0
+                    };
+
+                    let level = if end_idx <= virtual_start {
+                        // This bucket is in the "future" (unfilled part of the history)
+                        0.0
+                    } else {
+                        let actual_start = if start_idx < virtual_start {
+                            0
+                        } else {
+                            start_idx - virtual_start
+                        };
+                        let actual_end = end_idx - virtual_start;
+
+                        // Safety check for indices
+                        if actual_start < current_len && actual_end <= current_len {
+                            let chunk = &samples[actual_start..actual_end];
+                            if chunk.is_empty() {
+                                0.0
+                            } else {
+                                (chunk.iter().map(|&s| s * s).sum::<f32>() / chunk.len() as f32)
+                                    .sqrt()
+                            }
+                        } else {
+                            0.0
+                        }
+                    };
+
+                    levels.push(level);
+                }
+
+                let _ = app_handle.emit("buffer-activity", levels);
+            }
+        });
     }
 
     pub fn list_devices() -> Vec<String> {
@@ -158,6 +237,11 @@ impl AudioState {
         }
 
         Ok(())
+    }
+
+    pub fn clear_buffer(&self) {
+        let mut guard = self.buffer.lock().unwrap();
+        guard.clear();
     }
 
     fn spawn_worker(&self, config: &Config, app_handle: AppHandle) {
@@ -554,7 +638,20 @@ pub fn run_transcription(
             result.push_str(&segment);
         }
     }
-    Ok(result.trim().to_string())
+
+    let mut final_text = result.trim().to_string();
+
+    // Robustly strip the initial prompt if Whisper hallucinates it into the output
+    let prompt_fragment = "The following is a high-quality";
+    if final_text.starts_with(prompt_fragment) {
+        if let Some(period_idx) = final_text.find("uh'.") {
+            final_text = final_text[period_idx + 4..].trim().to_string();
+        } else if let Some(period_idx) = final_text.find("uh.") {
+            final_text = final_text[period_idx + 3..].trim().to_string();
+        }
+    }
+
+    Ok(final_text)
 }
 
 fn preprocess_audio(samples: &mut [f32]) {

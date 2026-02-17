@@ -57,7 +57,7 @@ export function SettingsView({ config, defaultMode, onDefaultModeChange, onSave,
 
   const [ollamaStatus, setOllamaStatus] = useState<"checking" | "present" | "absent">("checking");
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
-  
+
   const [audioDevices, setAudioDevices] = useState<string[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");
 
@@ -75,7 +75,7 @@ export function SettingsView({ config, defaultMode, onDefaultModeChange, onSave,
     // Initial validation of path and hotkey
     invoke<boolean>("validate_file_path", { path: config.whisper_ggml_path }).then(valid => setPathValidation(valid ? "valid" : "invalid"));
     invoke<boolean>("validate_hotkey", { hotkey: config.global_hotkey }).then(valid => setHotkeyValidation(valid ? "valid" : "invalid"));
-    
+
     // Fetch audio devices
     invoke<string[]>("list_audio_devices").then(setAudioDevices).catch(console.error);
     invoke<string>("get_audio_device").then(setSelectedDevice).catch(console.error);
@@ -147,7 +147,7 @@ export function SettingsView({ config, defaultMode, onDefaultModeChange, onSave,
       setGeminiValidation("invalid");
     }
   };
-  
+
   const handleDeviceChange = async (deviceName: string) => {
     try {
       await invoke("set_audio_device", { name: deviceName });
@@ -161,7 +161,10 @@ export function SettingsView({ config, defaultMode, onDefaultModeChange, onSave,
     <div className="w-full h-full flex flex-col bg-gray-900 text-sm text-gray-300 overflow-hidden">
       <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
         <div className="max-w-4xl mx-auto space-y-8">
-          <div className="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
+          <div
+            data-tauri-drag-region
+            className="flex justify-between items-center mb-6 border-b border-white/10 pb-4"
+          >
             <div className="flex items-center gap-3">
               <h2 className="text-xl font-bold text-white">Settings</h2>
               {isSaving ? (

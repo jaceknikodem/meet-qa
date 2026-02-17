@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { StructuredResponse } from "../utils/gemini";
 import { AppConfig } from "./SettingsView";
 import { invoke } from "@tauri-apps/api/core";
+import { BufferVisualizer } from "./BufferVisualizer";
 
 interface StealthViewProps {
     config: AppConfig | null;
@@ -70,7 +71,6 @@ export function StealthView({
 
     return (
         <div
-            data-tauri-drag-region
             className="w-screen h-screen flex flex-col items-center justify-center cursor-grab active:cursor-grabbing bg-black/[0.001]"
         >
             {/* Main HUD Container - Draggable */}
@@ -111,7 +111,10 @@ export function StealthView({
                 </div>
 
                 {/* Header */}
-                <div className="flex justify-between items-center mb-3 pr-8">
+                <div
+                    data-tauri-drag-region
+                    className="flex justify-between items-center mb-3 pr-8 cursor-grab active:cursor-grabbing"
+                >
                     <div className="flex items-center gap-3">
                         <div className="text-xs font-bold text-white/50 uppercase tracking-widest">
                             KUROKO
@@ -174,10 +177,16 @@ export function StealthView({
                         </div>
                     )}
 
-                    {/* Transcript Snippet */}
                     {transcript && !config?.error && (
-                        <div className="p-2 bg-white/5 rounded border border-white/5">
-                            <p className="text-[10px] text-gray-400 italic truncate italic">"{transcript}"</p>
+                        <div className="space-y-2">
+                            <div className="p-2 bg-white/5 rounded border border-white/5">
+                                <p className="text-[10px] text-gray-400 italic truncate italic">"{transcript}"</p>
+                            </div>
+                            <BufferVisualizer
+                                silenceThreshold={config?.silence_threshold ?? 0.005}
+                                bufferDuration={config?.buffer_duration_secs ?? 45}
+                                compact
+                            />
                         </div>
                     )}
 
@@ -193,11 +202,20 @@ export function StealthView({
                             {(response || isLoading) && (
                                 <div className="space-y-3">
                                     {response && response.confidence < (config?.min_confidence ?? 0.5) ? (
-                                        <div className="py-4 text-center space-y-2 opacity-50">
-                                            <p className="text-gray-500 font-medium text-xs uppercase tracking-widest">Filtered: Low Relevance</p>
-                                            <p className="text-[10px] text-gray-600 font-mono">
-                                                Confidence: {(response.confidence * 100).toFixed(0)}% (Min: {(config?.min_confidence ?? 0.5) * 100}%)
-                                            </p>
+                                        <div className="py-4 space-y-4">
+                                            <div className="text-center space-y-2 opacity-50">
+                                                <p className="text-gray-500 font-medium text-xs uppercase tracking-widest">Nothing significant found</p>
+                                                <p className="text-[10px] text-gray-600 font-mono">
+                                                    Confidence: {(response.confidence * 100).toFixed(0)}% &lt; {(config?.min_confidence ?? 0.5) * 100}%
+                                                </p>
+                                            </div>
+                                            <div className="w-full h-px bg-white/5"></div>
+                                            <div className="space-y-1.5 flex flex-col items-center">
+                                                <div className="text-[8px] text-white/30 font-bold uppercase tracking-wider w-full text-center">Analyzed Transcript:</div>
+                                                <div className="p-3 bg-white/5 rounded-xl border border-white/10 w-full">
+                                                    <p className="text-[11px] text-gray-400 italic leading-relaxed font-mono">"{transcript}"</p>
+                                                </div>
+                                            </div>
                                         </div>
                                     ) : (
                                         <>

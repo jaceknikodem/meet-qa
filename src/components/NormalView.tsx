@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { AgendaList, AgendaItem } from "./AgendaList";
 import { TranscriptionDisplay } from "./TranscriptionDisplay";
 import { InsightView } from "./InsightView";
+import { BufferVisualizer } from "./BufferVisualizer";
 
 interface NormalViewProps {
     config: AppConfig | null;
@@ -47,7 +48,7 @@ export function NormalView({
     const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([]);
     const [agendaStatus, setAgendaStatus] = useState<string>("");
     const [audioDevice, setAudioDevice] = useState<string>("");
-    const [isContextExpanded, setIsContextExpanded] = useState(false);
+    const [isContextExpanded, setIsContextExpanded] = useState(true);
 
     // 0. Fetch Audio Device
     useEffect(() => {
@@ -102,7 +103,10 @@ export function NormalView({
     return (
         <div className="w-full h-full flex flex-col bg-gray-900 text-white font-sans overflow-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-white/10 bg-black/20 backdrop-blur-md sticky top-0 z-10">
+            <div
+                data-tauri-drag-region
+                className="flex items-center justify-between p-4 border-b border-white/10 bg-black/20 backdrop-blur-md sticky top-0 z-10"
+            >
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -158,6 +162,14 @@ export function NormalView({
                                     <span className="text-white/10 mx-1">•</span>
                                     <span className="text-[10px] uppercase tracking-wider font-mono text-white/30 truncate max-w-[150px]" title={audioDevice}>
                                         {audioDevice}
+                                    </span>
+                                </>
+                            )}
+                            {config?.whisper_language && (
+                                <>
+                                    <span className="text-white/10 mx-1">•</span>
+                                    <span className="text-[10px] uppercase tracking-wider font-mono text-white/30">
+                                        {config.whisper_language}
                                     </span>
                                 </>
                             )}
@@ -255,11 +267,17 @@ export function NormalView({
                 <div className="w-[450px] flex flex-col p-6 bg-black/10 gap-4">
                     <TranscriptionDisplay transcript={transcript} />
 
+                    <BufferVisualizer
+                        silenceThreshold={config?.silence_threshold ?? 0.005}
+                        bufferDuration={config?.buffer_duration_secs ?? 45}
+                    />
+
                     <InsightView
                         config={config}
                         response={response}
                         isLoading={isLoading}
                         lastMode={lastMode}
+                        transcript={transcript}
                     />
 
                     {/* Quick AI Actions */}

@@ -163,6 +163,11 @@ pub fn open_config_dir() -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn clear_audio_buffer(state: State<AudioState>) {
+    state.clear_buffer();
+}
+
+#[tauri::command]
 pub fn get_config(config: State<Config>) -> Config {
     config.inner().clone()
 }

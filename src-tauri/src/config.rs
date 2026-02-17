@@ -36,6 +36,30 @@ impl Config {
         path
     }
 
+    pub fn get_env_path() -> std::path::PathBuf {
+        let app_data_dir = Self::get_app_data_dir();
+        let app_data_env = app_data_dir.join(".env");
+        let local_env = std::env::current_dir().unwrap_or_default().join(".env");
+
+        #[cfg(debug_assertions)]
+        {
+            // In dev, prefer local .env if it exists
+            if local_env.exists() {
+                return local_env;
+            }
+            app_data_env
+        }
+
+        #[cfg(not(debug_assertions))]
+        {
+            // In production, prefer AppData .env
+            if app_data_env.exists() {
+                return app_data_env;
+            }
+            local_env
+        }
+    }
+
     pub fn load() -> Result<Self, String> {
         let app_data_dir = Self::get_app_data_dir();
         if !app_data_dir.exists() {
@@ -47,17 +71,10 @@ impl Config {
             }
         }
 
-        // 1. Try project root .env first (convenient for local dev in src-tauri)
-        let local_env = std::env::current_dir().unwrap_or_default().join(".env");
-        let has_local = local_env.exists();
-        let env_path = if has_local {
-            local_env
-        } else {
-            // 2. Fallback to AppData dir (production / auto-save path)
-            app_data_dir.join(".env")
-        };
+        let env_path = Self::get_env_path();
+        let has_env = env_path.exists();
 
-        if !env_path.exists() && !has_local {
+        if !has_env {
             let default_env = r#"# Kuroko Configuration
 
 # 1. Your Google Gemini API Key (Required)
@@ -190,7 +207,7 @@ WHISPER_LANGUAGE=en
 
     pub fn save(&self) -> Result<(), String> {
         let app_data_dir = Self::get_app_data_dir();
-        let env_path = app_data_dir.join(".env");
+        let env_path = Self::get_env_path();
         let prompt_path = app_data_dir.join("prompt.txt");
 
         // Write prompt.txt
