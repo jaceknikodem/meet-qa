@@ -141,7 +141,7 @@ export function SettingsView({ config, defaultMode, onDefaultModeChange, onSave,
   return (
     <div className="w-full h-full flex flex-col bg-gray-900 text-sm text-gray-300 overflow-hidden">
       <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-        <div className="max-w-3xl mx-auto space-y-8">
+        <div className="max-w-4xl mx-auto space-y-8">
           <div className="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
             <div className="flex items-center gap-3">
               <h2 className="text-xl font-bold text-white">Settings</h2>

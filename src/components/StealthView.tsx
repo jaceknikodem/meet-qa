@@ -67,12 +67,12 @@ export function StealthView({
     return (
         <div
             data-tauri-drag-region
-            className="w-screen h-screen flex flex-col items-center justify-center p-4 cursor-grab active:cursor-grabbing bg-black/[0.001]"
+            className="w-screen h-screen flex flex-col items-center justify-center cursor-grab active:cursor-grabbing bg-black/[0.001]"
         >
             {/* Main HUD Container - Draggable */}
             <div
                 data-tauri-drag-region
-                className="bg-black/90 backdrop-blur-2xl border border-white/10 rounded-2xl p-6 w-full max-w-2xl shadow-2xl transition-all duration-300 relative group pointer-events-auto"
+                className="bg-black/90 backdrop-blur-2xl border border-white/10 rounded-2xl p-6 w-full max-w-4xl shadow-2xl transition-all duration-300 relative group pointer-events-auto"
             >
                 {/* Controls */}
                 <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-all z-20">

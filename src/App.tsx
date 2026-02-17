@@ -38,6 +38,8 @@ const LIVE_TRANSCRIPT_INTERVAL_MS = 1000;
 
 function App() {
   const [viewMode, setViewMode] = useState<"stealth" | "normal" | "settings">("normal");
+  const [prevViewMode, setPrevViewMode] = useState<"stealth" | "normal">("normal");
+
 
   const [transcript, setTranscript] = useState("");
   const [meetingContext, setMeetingContext] = useState("");
@@ -238,7 +240,7 @@ function App() {
         onSave={(newConfig) => {
           setConfig(newConfig);
         }}
-        onClose={() => setViewMode("normal")}
+        onClose={() => setViewMode(prevViewMode)}
       />
     );
   }
@@ -256,7 +258,10 @@ function App() {
         onToggleRecording={handleToggleRecording}
         onTriggerAI={(mode) => runGeminiFlow(mode)}
         lastMode={lastMode}
-        onOpenSettings={() => setViewMode("settings")}
+        onOpenSettings={() => {
+          setPrevViewMode("normal");
+          setViewMode("settings");
+        }}
         onSwitchToStealth={() => setViewMode("stealth")}
       />
     );
@@ -274,10 +279,14 @@ function App() {
       onClose={handleClose}
       onTriggerAI={(mode) => runGeminiFlow(mode)}
       lastMode={lastMode}
-      onOpenSettings={() => setViewMode("settings")}
+      onOpenSettings={() => {
+        setPrevViewMode("stealth");
+        setViewMode("settings");
+      }}
       onSwitchToNormal={() => setViewMode("normal")}
     />
   );
 }
+
 
 export default App;

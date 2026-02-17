@@ -1,6 +1,15 @@
 import { StructuredResponse } from "../utils/gemini";
 import { AppConfig } from "./SettingsView";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { useEffect, useState } from "react";
+
+interface AgendaItem {
+    id: string;
+    text: string;
+    status: "pending" | "answered";
+    answer?: string;
+}
 
 interface NormalViewProps {
     config: AppConfig | null;
@@ -31,6 +40,66 @@ export function NormalView({
     onOpenSettings,
     onSwitchToStealth,
 }: NormalViewProps) {
+    const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([]);
+
+    // 1. Initial Load & Listen for Backend Updates
+    useEffect(() => {
+        const unlistenPromise = listen<AgendaItem[]>("agenda-update", (event) => {
+            console.log("Agenda Update:", event.payload);
+            setAgendaItems(_ => {
+                // Merge updates: keep existing, update status/answer if changed
+                return event.payload; // actually backend sends full state, so we can just replace
+            });
+        });
+        return () => { unlistenPromise.then(f => f()); };
+    }, []);
+
+    // 2. Parse Context -> Backend Agenda
+    useEffect(() => {
+        const parseAgenda = async () => {
+            const lines = meetingContext.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+            // Simple heuristic: if lines look like questions or numbered items, treat as agenda
+            const items: AgendaItem[] = lines.map((line, idx) => ({
+                id: (idx + 1).toString(),
+                text: line.replace(/^\d+\.\s*/, ''), // remove "1. " prefix if present
+                status: "pending",
+                answer: undefined
+            }));
+
+            // Only update if changed significantly (count or text) to avoid flickering status
+            // ideally we diff, but for now we just send. 
+            // BEWARE: this resets status to pending if we type!
+            // Workaround: We only send if count changes OR we explicit save? 
+            // Or we merge with existing state "answered" status?
+
+            // Better: we don't sync status FROM here, we only send text. 
+            // Backend preserves status? No, backend is naive.
+
+            // Let's just send. If user types, it resets. That's acceptable for MVP.
+            // But we can try to preserve status from `agendaItems` state if text matches?
+
+            const mergedItems = items.map(newItem => {
+                const existing = agendaItems.find(old => old.text === newItem.text);
+                if (existing && existing.status === 'answered') {
+                    return { ...newItem, status: existing.status, answer: existing.answer };
+                }
+                return newItem;
+            });
+
+            if (JSON.stringify(mergedItems) !== JSON.stringify(agendaItems)) {
+                // Optimization: avoid loop?
+                // setAgendaItems(mergedItems); // Don't set here to avoid loop with backend update? 
+                // Actually backend update comes later.
+                // We should set it to display immediately.
+                setAgendaItems(mergedItems);
+                await invoke("update_agenda", { items: mergedItems });
+            }
+        };
+
+        const timeout = setTimeout(parseAgenda, 1000); // Debounce
+        return () => clearTimeout(timeout);
+    }, [meetingContext]);
+
     return (
         <div className="w-full h-full flex flex-col bg-gray-900 text-white font-sans overflow-hidden">
             {/* Header */}
@@ -107,9 +176,52 @@ export function NormalView({
                             value={meetingContext}
                             onChange={(e) => onMeetingContextChange(e.target.value)}
                             placeholder="Add specific context for this meeting (e.g. project names, attendee names, specific goals)..."
-                            className="w-full h-16 bg-black/40 rounded-xl border border-white/10 p-3 text-sm text-gray-300 focus:outline-none focus:border-blue-500/50 transition-colors resize-none custom-scrollbar"
+                            className="w-full h-32 bg-black/40 rounded-xl border border-white/10 p-3 text-sm text-gray-300 focus:outline-none focus:border-blue-500/50 transition-colors resize-none custom-scrollbar"
                         />
                     </div>
+
+                    {/* Pending Questions / Agenda Status */}
+                    {agendaItems.length > 0 && (
+                        <div className="mb-4 flex flex-col gap-2 max-h-40 overflow-y-auto custom-scrollbar">
+                            <label className="text-[10px] text-white/40 uppercase font-bold tracking-wider flex items-center justify-between">
+                                <span>Tracked Agenda ({agendaItems.filter(i => i.status === 'answered').length}/{agendaItems.length})</span>
+                                {agendaItems.some(i => i.status === 'pending') && (
+                                    <span className="flex items-center gap-1 text-blue-400 animate-pulse">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div>
+                                        Listening
+                                    </span>
+                                )}
+                            </label>
+                            <div className="flex flex-col gap-2">
+                                {agendaItems.map((item) => (
+                                    <div
+                                        key={item.id}
+                                        className={`p-3 rounded-lg border text-sm transition-all ${item.status === 'answered'
+                                            ? "bg-green-500/10 border-green-500/20"
+                                            : "bg-white/5 border-white/5"
+                                            }`}
+                                    >
+                                        <div className="flex items-start gap-2">
+                                            <div className={`mt-0.5 min-w-[16px] h-4 flex items-center justify-center rounded-full text-[10px] font-bold ${item.status === 'answered' ? "bg-green-500 text-black" : "bg-white/10 text-white/50"
+                                                }`}>
+                                                {item.status === 'answered' ? "✓" : item.id}
+                                            </div>
+                                            <div className="flex-1">
+                                                <p className={`leading-snug ${item.status === 'answered' ? "text-green-100" : "text-gray-300"}`}>
+                                                    {item.text}
+                                                </p>
+                                                {item.answer && (
+                                                    <div className="mt-2 text-xs bg-black/20 rounded p-2 text-green-200/80 font-mono">
+                                                        {item.answer}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     <div className="flex-1 bg-black/40 rounded-2xl border border-white/5 p-4 overflow-y-auto mb-4 custom-scrollbar relative">
                         <div className="absolute top-2 right-2 text-[10px] text-white/20 uppercase font-mono tracking-widest">Captured Meeting Transcript</div>
@@ -117,62 +229,10 @@ export function NormalView({
                             {transcript || <span className="text-gray-600 italic">Waiting for audio...</span>}
                         </p>
                     </div>
-
-                    <div className="flex flex-col gap-3">
-                        <button
-                            onClick={onToggleRecording}
-                            className={`w-full py-2.5 px-4 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 transition-all ${isRecording
-                                ? "bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/10"
-                                : "bg-green-600 text-white hover:bg-green-500 shadow-lg shadow-green-500/10"
-                                }`}
-                        >
-                            {isRecording ? (
-                                <>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
-                                    Stop Recording
-                                </>
-                            ) : (
-                                <>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                                    Start Recording
-                                </>
-                            )}
-                        </button>
-
-                        <div className="grid grid-cols-3 gap-2">
-                            <button
-                                onClick={() => onTriggerAI("validate")}
-                                disabled={isLoading || !isRecording}
-                                className="py-2 px-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs flex flex-col items-center justify-center gap-1 transition-all shadow-lg shadow-indigo-500/10 disabled:opacity-50 disabled:cursor-not-allowed h-16"
-                                title="Validate the most recent claim"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                                Validate
-                            </button>
-                            <button
-                                onClick={() => onTriggerAI("answer")}
-                                disabled={isLoading || !isRecording}
-                                className="py-2 px-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs flex flex-col items-center justify-center gap-1 transition-all shadow-lg shadow-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed h-16"
-                                title="Answer the most recent question"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
-                                Answer
-                            </button>
-                            <button
-                                onClick={() => onTriggerAI("followup")}
-                                disabled={isLoading || !isRecording}
-                                className="py-2 px-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs flex flex-col items-center justify-center gap-1 transition-all shadow-lg shadow-purple-500/10 disabled:opacity-50 disabled:cursor-not-allowed h-16"
-                                title="Generate a follow-up question"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path><path d="M16 21h5v-5"></path></svg>
-                                Follow-up
-                            </button>
-                        </div>
-                    </div>
                 </div>
 
-                {/* Right: AI Response */}
-                <div className="w-[400px] flex flex-col p-6 pl-0 bg-black/10">
+                {/* Right: AI Response & Controls */}
+                <div className="w-[400px] flex flex-col p-6 bg-black/10">
                     <div className="mb-4 flex items-center justify-between">
                         <h2 className="text-white/50 font-bold uppercase tracking-wider text-xs">AI Insight</h2>
                         {response?.confidence ? (
@@ -209,6 +269,54 @@ export function NormalView({
                                 </div>
                             </div>
                         )}
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-2 mt-4">
+                        <button
+                            onClick={onToggleRecording}
+                            className={`flex flex-col items-center justify-center p-2 rounded-lg transition-all ${isRecording
+                                ? "bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/10"
+                                : "bg-green-600 text-white hover:bg-green-500 shadow-lg shadow-green-500/10"
+                                }`}
+                            title={isRecording ? "Stop Recording" : "Start Recording"}
+                        >
+                            {isRecording ? (
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+                            ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                            )}
+                            <span className="text-[10px] font-bold mt-1 uppercase tracking-wider">{isRecording ? "Stop" : "Rec"}</span>
+                        </button>
+
+                        <button
+                            onClick={() => onTriggerAI("validate")}
+                            disabled={isLoading || !isRecording}
+                            className="flex flex-col items-center justify-center p-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-lg shadow-indigo-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Validate the most recent claim"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                            <span className="text-[10px] font-bold mt-1 uppercase tracking-wider">Check</span>
+                        </button>
+
+                        <button
+                            onClick={() => onTriggerAI("answer")}
+                            disabled={isLoading || !isRecording}
+                            className="flex flex-col items-center justify-center p-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-all shadow-lg shadow-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Answer the most recent question"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+                            <span className="text-[10px] font-bold mt-1 uppercase tracking-wider">Answer</span>
+                        </button>
+
+                        <button
+                            onClick={() => onTriggerAI("followup")}
+                            disabled={isLoading || !isRecording}
+                            className="flex flex-col items-center justify-center p-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white transition-all shadow-lg shadow-purple-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Generate a follow-up question"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path><path d="M16 21h5v-5"></path></svg>
+                            <span className="text-[10px] font-bold mt-1 uppercase tracking-wider">Follow-up</span>
+                        </button>
                     </div>
                 </div>
             </div>

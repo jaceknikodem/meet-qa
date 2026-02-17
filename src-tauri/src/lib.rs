@@ -302,7 +302,8 @@ pub fn run() {
             list_ollama_models,
             validate_gemini_key,
             validate_file_path,
-            validate_hotkey
+            validate_hotkey,
+            audio::update_agenda
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

@@ -9,7 +9,8 @@
 
   color-scheme: dark;
   color: rgba(255, 255, 255, 0.87);
-  background-color: transparent; /* Transparent for the window */
+  background-color: transparent;
+  /* Transparent for the window */
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -19,12 +20,17 @@
 
 body {
   margin: 0;
+  width: 100vw;
+  height: 100vh;
   display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
-  background-color: transparent; /* Validate transparency */
+  background-color: transparent;
 }
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
 
 /* Custom Scrollbar */
 .custom-scrollbar::-webkit-scrollbar {

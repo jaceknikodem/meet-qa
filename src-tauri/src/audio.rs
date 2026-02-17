@@ -27,6 +27,7 @@ pub struct AudioState {
     pub last_updated: Arc<Mutex<std::time::Instant>>,
     pub is_recording: Arc<std::sync::atomic::AtomicBool>,
     pub silence_threshold: f32,
+    pub agenda: Arc<Mutex<Vec<AgendaItem>>>,
     // We keep the stream around so it doesn't get dropped and stop recording
     pub _stream: cpal::Stream,
 }
@@ -109,6 +110,7 @@ impl AudioState {
         let ctx = Arc::new(ctx);
         let last_transcript = Arc::new(Mutex::new(String::new()));
         let last_updated = Arc::new(Mutex::new(std::time::Instant::now()));
+        let agenda = Arc::new(Mutex::new(Vec::new()));
 
         // Start background pre-emptive transcription thread
         let buffer_bg = buffer.clone();
@@ -120,6 +122,7 @@ impl AudioState {
         let app_handle_bg = app_handle.clone();
         let is_recording_bg = is_recording.clone();
         let silence_threshold = config.silence_threshold;
+        let agenda_bg = agenda.clone();
 
         std::thread::spawn(move || {
             let mut last_detected_text = String::new();
@@ -156,7 +159,41 @@ impl AudioState {
                         if let Some(model) = &detect_model {
                             // Only check if we have significant new text to avoid spamming
                             if text.len() >= min_chars && text != last_detected_text {
-                                if check_for_question(model, &text) {
+                                // 1. Check Agenda Items First
+                                let mut agenda_updates = Vec::new();
+                                {
+                                    let agenda_items = agenda_bg.lock().unwrap();
+                                    // Make a cheap copy to avoid holding lock during HTTP
+                                    let items_clone = agenda_items.clone();
+                                    if !items_clone.is_empty() {
+                                        let updates = check_agenda(model, &text, &items_clone);
+                                        if !updates.is_empty() {
+                                            agenda_updates = updates;
+                                        }
+                                    }
+                                }
+
+                                if !agenda_updates.is_empty() {
+                                    println!("Agenda updates found: {:?}", agenda_updates);
+                                    // Update State
+                                    {
+                                        let mut agenda_items = agenda_bg.lock().unwrap();
+                                        for (id, answer) in &agenda_updates {
+                                            if let Some(item) =
+                                                agenda_items.iter_mut().find(|i| &i.id == id)
+                                            {
+                                                item.status = "answered".to_string();
+                                                item.answer = Some(answer.clone());
+                                            }
+                                        }
+                                        // Emit event
+                                        let _ = app_handle_bg
+                                            .emit("agenda-update", agenda_items.clone());
+                                    }
+                                    last_detected_text = text.clone();
+                                }
+                                // 2. General Question Detection (Fallback)
+                                else if check_for_question(model, &text) {
                                     println!("Question detected via Ollama! Triggering HUD.");
                                     if let Some(window) = app_handle_bg.get_webview_window("main") {
                                         let _ = window.show();
@@ -179,9 +216,88 @@ impl AudioState {
             last_updated,
             is_recording,
             silence_threshold: config.silence_threshold,
+            agenda,
             _stream: stream,
         })
     }
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct AgendaItem {
+    pub id: String,
+    pub text: String,
+    pub status: String, // "pending", "answered"
+    pub answer: Option<String>,
+}
+
+fn check_agenda(model: &str, text: &str, items: &[AgendaItem]) -> Vec<(String, String)> {
+    // Returns list of (id, answer) tuples
+    let pending_items: Vec<&AgendaItem> = items.iter().filter(|i| i.status == "pending").collect();
+    if pending_items.is_empty() {
+        return Vec::new();
+    }
+
+    let questions_block = pending_items
+        .iter()
+        .enumerate()
+        .map(|(i, item)| format!("{}. {}", i + 1, item.text))
+        .collect::<Vec<String>>()
+        .join("\n");
+
+    let prompt = format!(
+        "You are a meeting assistant. 
+        Context: The following questions are on the agenda:
+        {}
+        
+        Transcript Excerpt:
+        \"{}\"
+        
+        Task: For each question, determine if it has been answered in the transcript.
+        Return a JSON object where keys are the Question Indices (1, 2, etc.) and values are the answer text found.
+        If not answered, do not include the key.
+        Example JSON: {{ \"1\": \"The budget is $50k\" }}
+        output ONLY JSON.",
+        questions_block, text
+    );
+
+    let client = reqwest::blocking::Client::new();
+    let req = OllamaRequest {
+        model: model.to_string(),
+        prompt,
+        stream: false,
+    };
+
+    let mut updates = Vec::new();
+
+    if let Ok(resp) = client
+        .post("http://localhost:11434/api/generate")
+        .json(&req)
+        .send()
+    {
+        if let Ok(ollama_resp) = resp.json::<OllamaResponse>() {
+            let json_str = ollama_resp.response.trim();
+            // Try to find JSON block
+            if let Some(start) = json_str.find('{') {
+                if let Some(end) = json_str.rfind('}') {
+                    let clean_json = &json_str[start..=end];
+                    if let Ok(parsed) = serde_json::from_str::<
+                        std::collections::HashMap<String, String>,
+                    >(clean_json)
+                    {
+                        for (key, answer) in parsed {
+                            if let Ok(idx) = key.parse::<usize>() {
+                                if idx > 0 && idx <= pending_items.len() {
+                                    let item = pending_items[idx - 1];
+                                    updates.push((item.id.clone(), answer));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    updates
 }
 
 fn check_for_question(model: &str, text: &str) -> bool {
@@ -351,6 +467,14 @@ pub fn get_latest_audio(_state: State<AudioState>) -> Result<String, String> {
 pub fn transcribe_audio(_wav_path: String) -> Result<String, String> {
     Err("Legacy transcription disabled in favor of native transcription".to_string())
 }
+#[tauri::command]
+pub fn update_agenda(audio_state: State<AudioState>, items: Vec<AgendaItem>) -> Result<(), String> {
+    let mut guard = audio_state.agenda.lock().unwrap();
+    *guard = items;
+    println!("Updated agenda with {} items", guard.len());
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
