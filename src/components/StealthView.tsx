@@ -202,19 +202,12 @@ export function StealthView({
                             {(response || isLoading) && (
                                 <div className="space-y-3">
                                     {response && response.confidence < (config?.min_confidence ?? 0.5) ? (
-                                        <div className="py-4 space-y-4">
+                                        <div className="py-4 font-mono">
                                             <div className="text-center space-y-2 opacity-50">
                                                 <p className="text-gray-500 font-medium text-xs uppercase tracking-widest">Nothing significant found</p>
-                                                <p className="text-[10px] text-gray-600 font-mono">
+                                                <p className="text-[10px] text-gray-600">
                                                     Confidence: {(response.confidence * 100).toFixed(0)}% &lt; {(config?.min_confidence ?? 0.5) * 100}%
                                                 </p>
-                                            </div>
-                                            <div className="w-full h-px bg-white/5"></div>
-                                            <div className="space-y-1.5 flex flex-col items-center">
-                                                <div className="text-[8px] text-white/30 font-bold uppercase tracking-wider w-full text-center">Analyzed Transcript:</div>
-                                                <div className="p-3 bg-white/5 rounded-xl border border-white/10 w-full">
-                                                    <p className="text-[11px] text-gray-400 italic leading-relaxed font-mono">"{transcript}"</p>
-                                                </div>
                                             </div>
                                         </div>
                                     ) : (

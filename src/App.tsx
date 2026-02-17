@@ -133,6 +133,7 @@ function App() {
       setTranscript(text);
 
       if (!text || !text.trim()) {
+        setTranscript("(No speech detected.)");
         setResponse({ cleaned_question: "", answer: "No speech detected.", confidence: 0 });
         setIsLoading(false);
         return;

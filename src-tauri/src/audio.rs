@@ -310,12 +310,20 @@ impl AudioState {
                         }
 
                         if text == last_detected_text {
+                            println!(
+                                "[Agenda] Text unchanged ({} chars), skipping Ollama.",
+                                text.len()
+                            );
                             let status = format!("Listening... ({} chars, no change)", text.len());
                             let _ = app_handle.emit("agenda-status", status);
                             continue;
                         }
 
                         if text.len() >= min_chars {
+                            println!(
+                                "[Agenda] Sufficient text ({} chars), checking agenda...",
+                                text.len()
+                            );
                             let _ = app_handle.emit("agenda-status", "Scanning agenda...");
                             let mut agenda_updates = Vec::new();
                             {
@@ -410,9 +418,12 @@ fn check_agenda(model: &str, text: &str, items: &[AgendaItem]) -> Vec<(String, S
     let client = reqwest::blocking::Client::new();
     let req = OllamaRequest {
         model: model.to_string(),
-        prompt,
+        prompt: prompt.clone(),
         stream: false,
     };
+
+    println!("[Agenda] Calling Ollama with model: {}", model);
+    println!("[Agenda] Prompt: {}", prompt);
 
     let mut updates = Vec::new();
 
@@ -423,10 +434,12 @@ fn check_agenda(model: &str, text: &str, items: &[AgendaItem]) -> Vec<(String, S
     {
         if let Ok(ollama_resp) = resp.json::<OllamaResponse>() {
             let json_str = ollama_resp.response.trim();
+            println!("[Agenda] Raw Ollama response: {}", json_str);
             // Try to find JSON block
             if let Some(start) = json_str.find('{') {
                 if let Some(end) = json_str.rfind('}') {
                     let clean_json = &json_str[start..=end];
+                    println!("[Agenda] Cleaned JSON: {}", clean_json);
                     if let Ok(parsed) = serde_json::from_str::<
                         std::collections::HashMap<String, String>,
                     >(clean_json)
@@ -435,14 +448,26 @@ fn check_agenda(model: &str, text: &str, items: &[AgendaItem]) -> Vec<(String, S
                             if let Ok(idx) = key.parse::<usize>() {
                                 if idx > 0 && idx <= pending_items.len() {
                                     let item = pending_items[idx - 1];
+                                    println!(
+                                        "[Agenda] Match found for goal {}: {}",
+                                        item.id, answer
+                                    );
                                     updates.push((item.id.clone(), answer));
                                 }
                             }
                         }
+                    } else {
+                        println!("[Agenda] Failed to parse JSON from response");
                     }
                 }
+            } else {
+                println!("[Agenda] No JSON block found in response");
             }
+        } else {
+            println!("[Agenda] Failed to parse OllamaResponse JSON");
         }
+    } else {
+        println!("[Agenda] HTTP request to Ollama failed");
     }
     updates
 }
