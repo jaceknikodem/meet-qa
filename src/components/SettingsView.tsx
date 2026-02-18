@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 export interface AppConfig {
   api_key: string;
@@ -159,13 +160,25 @@ export function SettingsView({ config, defaultMode, onDefaultModeChange, onSave,
     }
   };
 
+  const startDrag = async (e: React.MouseEvent) => {
+    // Only drag if not clicking on interactive elements
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.tagName.toLowerCase() === 'button' ||
+      target.closest('input') || target.tagName.toLowerCase() === 'input' ||
+      target.closest('textarea') || target.tagName.toLowerCase() === 'textarea') {
+      return;
+    }
+    await getCurrentWindow().startDragging();
+  };
+
   return (
     <div className="w-full h-full flex flex-col bg-gray-900 text-sm text-gray-300 overflow-hidden">
       <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
         <div className="max-w-4xl mx-auto space-y-8">
           <div
             data-tauri-drag-region
-            className="flex justify-between items-center mb-6 border-b border-white/10 pb-4"
+            onMouseDown={startDrag}
+            className="flex justify-between items-center mb-6 border-b border-white/10 pb-4 cursor-grab active:cursor-grabbing"
           >
             <div className="flex items-center gap-3">
               <h2 className="text-xl font-bold text-white">Settings</h2>

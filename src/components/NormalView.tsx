@@ -1,6 +1,7 @@
 import { StructuredResponse } from "../utils/gemini";
 import { AppConfig } from "./SettingsView";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
 import { AgendaList, AgendaItem } from "./AgendaList";
@@ -149,12 +150,24 @@ export function NormalView({
         }
     };
 
+    const startDrag = async (e: React.MouseEvent) => {
+        // Only drag if not clicking on interactive elements
+        const target = e.target as HTMLElement;
+        if (target.closest('button') || target.tagName.toLowerCase() === 'button' ||
+            target.closest('input') || target.tagName.toLowerCase() === 'input' ||
+            target.closest('textarea') || target.tagName.toLowerCase() === 'textarea') {
+            return;
+        }
+        await getCurrentWindow().startDragging();
+    };
+
     return (
         <div className="w-full h-full flex flex-col bg-gray-900 text-white font-sans overflow-hidden">
             {/* Header */}
             <div
                 data-tauri-drag-region
-                className="flex items-center justify-between p-4 border-b border-white/10 bg-black/20 backdrop-blur-md sticky top-0 z-10"
+                onMouseDown={startDrag}
+                className="flex items-center justify-between p-4 border-b border-white/10 bg-black/20 backdrop-blur-md sticky top-0 z-10 cursor-grab active:cursor-grabbing"
             >
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20">

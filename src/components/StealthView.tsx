@@ -1,3 +1,4 @@
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect } from "react";
 import { StructuredResponse } from "../utils/gemini";
 import { AppConfig } from "./SettingsView";
@@ -69,6 +70,17 @@ export function StealthView({
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [onTriggerAI, onClose]);
 
+    const startDrag = async (e: React.MouseEvent) => {
+        // Only drag if not clicking on interactive elements
+        const target = e.target as HTMLElement;
+        if (target.closest('button') || target.tagName.toLowerCase() === 'button' ||
+            target.closest('input') || target.tagName.toLowerCase() === 'input' ||
+            target.closest('textarea') || target.tagName.toLowerCase() === 'textarea') {
+            return;
+        }
+        await getCurrentWindow().startDragging();
+    };
+
     return (
         <div
             className="w-screen h-screen flex flex-col items-center justify-center cursor-grab active:cursor-grabbing bg-black/[0.001]"
@@ -76,7 +88,8 @@ export function StealthView({
             {/* Main HUD Container - Draggable */}
             <div
                 data-tauri-drag-region
-                className="bg-black/90 backdrop-blur-2xl border border-white/10 rounded-2xl p-5 w-full max-w-xl shadow-2xl transition-all duration-300 relative group pointer-events-auto"
+                onMouseDown={startDrag}
+                className="bg-black/90 backdrop-blur-2xl border border-white/10 rounded-2xl p-5 w-full max-w-xl shadow-2xl transition-all duration-300 relative group pointer-events-auto cursor-grab active:cursor-grabbing"
             >
                 {/* Controls */}
                 <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-all z-20">

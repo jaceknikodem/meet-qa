@@ -8,6 +8,7 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "global-shortcut:default"
+    "global-shortcut:default",
+    "core:window:allow-start-dragging"
   ]
 }
