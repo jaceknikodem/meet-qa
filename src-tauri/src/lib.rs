@@ -27,11 +27,13 @@ pub fn run() {
             whisper_ggml_path: "".to_string(),
             prompt: "".to_string(),
             ollama_model: None,
+            ollama_embedding_model: None,
             ollama_min_chars: 50,
             min_confidence: 0.5,
             silence_threshold: 0.005,
             transcription_mode: "speed".to_string(),
             whisper_language: "en".to_string(),
+            agenda_similarity_threshold: 0.35,
             error: Some(e),
          };
          c
@@ -129,7 +131,8 @@ pub fn run() {
             commands::validate_file_path,
             commands::validate_hotkey,
             commands::update_agenda,
-            commands::clear_audio_buffer
+            commands::clear_audio_buffer,
+            commands::expand_agenda_item
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

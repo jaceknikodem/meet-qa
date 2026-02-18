@@ -76,21 +76,37 @@ export function NormalView({
     useEffect(() => {
         const parseAgendaAndSync = async () => {
             const lines = meetingContext.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-            const items: AgendaItem[] = lines.map((line, idx) => ({
-                id: (idx + 1).toString(),
-                text: line.replace(/^\d+\.\s*/, ''),
-                status: "pending"
-            }));
 
-            const mergedItems = items.map(newItem => {
-                const existing = agendaItems.find(old => old.text === newItem.text);
-                if (existing && existing.status === 'answered') {
-                    return { ...newItem, status: existing.status, answer: existing.answer };
+            // We want to preserve existing items' state if text matches
+            // If text is new, create new item with defaults
+            const mergedItems: AgendaItem[] = lines.map((line, idx) => {
+                const id = (idx + 1).toString();
+                const existing = agendaItems.find(old => old.text === line);
+                if (existing) {
+                    return { ...existing, id }; // Update ID if position changed, but keep state, score, evidence
                 }
-                return newItem;
+                return {
+                    id,
+                    text: line,
+                    status: "pending",
+                    score: 0,
+                    evidence: []
+                };
             });
 
-            if (JSON.stringify(mergedItems) !== JSON.stringify(agendaItems)) {
+            // Only update if something changed (naive check, but sufficient often)
+            // Just comparing text and length is not enough, we specifically want to send updates when the user types
+            // But we don't want to overwrite backend updates if user didn't change anything
+            // Actually, syncing from text area is "source of truth for structure", backend is "source of truth for state"
+            // This is tricky. Let's assume user edits to text area reset state for that item OR we try to match text.
+
+            // Current approach: We match by text. 
+            // If we have items in `agendaItems` (from backend update) that are NOT in `lines`, they are deleted.
+
+            const currentTexts = agendaItems.map(i => i.text).sort().join('|');
+            const newTexts = mergedItems.map(i => i.text).sort().join('|');
+
+            if (currentTexts !== newTexts) {
                 setAgendaItems(mergedItems);
                 await invoke("update_agenda", { items: mergedItems });
             }
@@ -98,7 +114,40 @@ export function NormalView({
 
         const timeout = setTimeout(parseAgendaAndSync, 1000);
         return () => clearTimeout(timeout);
-    }, [meetingContext]);
+    }, [meetingContext, agendaItems]); // added agendaItems dependency so we don't overwrite if backend updates? No, that causes loops.
+    // Actually, we should probably ONLY sync when `meetingContext` changes.
+    // Use a ref to track if the change came from user input or backend?
+    // For now, let's keep it simple: `meetingContext` drives the structure.
+
+    const handleExpandItem = async (id: string, text: string) => {
+        setAgendaStatus(`Expanding "${text}"...`);
+        try {
+            const subItems = await invoke<string[]>("expand_agenda_item", { itemText: text });
+
+            // Replace the item with sub-items in the text area
+            const lines = meetingContext.split('\n');
+            // Find the line that matches text exactly
+            const idx = lines.findIndex(l => l.includes(text)); // Approximate match to handle bullets?
+
+            if (idx !== -1) {
+                const prefix = lines[idx].match(/^(\d+\.|-|\*)\s*/)?.[0] || "";
+                // Use the same indent/prefix style
+                const newLines = subItems.map(s => `  - ${s}`); // Indent sub-items
+                // Actually, user might prefer flattened list.
+                // "break the point into subparts"
+                // Let's just replace the line with the new lines
+
+                // If we use sub-bullets in text area, our parser `meetingContext.split('\n')` treats them as individual items (which is what we want for flat tracking)
+                lines.splice(idx, 1, ...subItems);
+                const newContext = lines.join('\n');
+                onMeetingContextChange(newContext);
+                setAgendaStatus("Expansion complete");
+            }
+        } catch (e: any) {
+            console.error("Failed to expand:", e);
+            setAgendaStatus(`Expansion failed: ${e}`);
+        }
+    };
 
     return (
         <div className="w-full h-full flex flex-col bg-gray-900 text-white font-sans overflow-hidden">
@@ -260,7 +309,7 @@ export function NormalView({
                         />
                     </div>
 
-                    <AgendaList items={agendaItems} status={agendaStatus} />
+                    <AgendaList items={agendaItems} status={agendaStatus} onExpandItem={handleExpandItem} />
                 </div>
 
                 {/* Right: Transcript & AI Insights */}

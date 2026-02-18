@@ -9,11 +9,13 @@ export interface AppConfig {
   buffer_duration_secs: number;
   whisper_ggml_path: string;
   ollama_model?: string;
+  ollama_embedding_model?: string;
   ollama_min_chars: number;
   min_confidence: number;
   transcription_mode: "speed" | "accuracy";
   whisper_language: string;
   silence_threshold: number;
+  agenda_similarity_threshold: number;
   error?: string;
 }
 
@@ -451,6 +453,59 @@ export function SettingsView({ config, defaultMode, onDefaultModeChange, onSave,
                     }
                     className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-white"
                   />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    Ollama Embedding Model
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={formData.ollama_embedding_model || ""}
+                      onChange={(e) => handleChange("ollama_embedding_model", e.target.value)}
+                      disabled={ollamaStatus !== "present"}
+                      className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-white appearance-none pr-8 disabled:opacity-50"
+                    >
+                      <option value="">Disabled</option>
+                      {ollamaModels.map(m => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-white/50">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    Agenda Similarity Threshold
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={formData.agenda_similarity_threshold || 0.35}
+                      onChange={(e) =>
+                        handleChange("agenda_similarity_threshold", parseFloat(e.target.value) || 0.35)
+                      }
+                      className="flex-1 h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                    />
+                    <input
+                      type="number"
+                      step="0.05"
+                      min="0"
+                      max="1"
+                      value={formData.agenda_similarity_threshold || 0.35}
+                      onChange={(e) =>
+                        handleChange("agenda_similarity_threshold", parseFloat(e.target.value) || 0.35)
+                      }
+                      className="w-20 bg-black/40 border border-white/10 rounded px-2 py-1 focus:outline-none focus:border-blue-500 transition-colors text-white text-xs font-mono"
+                    />
+                  </div>
                 </div>
               </div>
             </div>

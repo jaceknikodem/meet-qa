@@ -87,7 +87,27 @@ pub fn transcribe_audio(_wav_path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn update_agenda(audio_state: State<AudioState>, items: Vec<AgendaItem>) -> Result<(), String> {
+pub fn update_agenda(
+    audio_state: State<AudioState>,
+    config: State<Config>,
+    mut items: Vec<AgendaItem>,
+) -> Result<(), String> {
+    // Generate embeddings for items that don't have them
+    if let Some(model) = &config.ollama_embedding_model {
+        for item in items.iter_mut() {
+            if item.embedding.is_none() {
+                if let Ok(emb) = crate::audio::get_embedding(model, &item.text) {
+                    item.embedding = Some(emb);
+                } else {
+                    eprintln!(
+                        "Failed to generate embedding for agenda item: {}",
+                        item.text
+                    );
+                }
+            }
+        }
+    }
+
     let mut guard = audio_state.agenda.lock().unwrap();
     *guard = items;
     println!("Updated agenda with {} items", guard.len());
@@ -256,4 +276,67 @@ pub async fn validate_gemini_key(api_key: String) -> Result<bool, String> {
     } else {
         Err(format!("Gemini API Error: {}", resp.status()))
     }
+}
+
+#[tauri::command]
+pub async fn expand_agenda_item(
+    config: State<'_, Config>,
+    item_text: String,
+) -> Result<Vec<String>, String> {
+    if config.gemini_api_key.is_empty() {
+        return Err("Gemini API Key is required".to_string());
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let prompt = format!(
+        "You are a meeting assistant. The user has a vague agenda item: \"{}\".
+        Break this down into 3-5 specific, actionable sub-items or questions that can be tracked in a meeting.
+        Return ONLY a JSON array of strings.
+        Example: [\"Discuss Q1 revenue\", \"Review marketing budget\", \"Plan Q2 hiring\"]",
+        item_text
+    );
+
+    let json_body = serde_json::json!({
+        "contents": [{
+            "parts": [{
+                "text": prompt
+            }]
+        }]
+    });
+
+    let resp = client
+        .post(&format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+            config.gemini_model, config.gemini_api_key
+        ))
+        .json(&json_body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Gemini API Error: {}", resp.status()));
+    }
+
+    let json_resp: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+
+    // Extract text from Gemini response structure
+    let text = json_resp["candidates"][0]["content"]["parts"][0]["text"]
+        .as_str()
+        .ok_or("Failed to parse Gemini response")?
+        .trim();
+
+    // Parse JSON array from text
+    let start = text.find('[').ok_or("No JSON array found")?;
+    let end = text.rfind(']').ok_or("No JSON array found")?;
+    let json_str = &text[start..=end];
+
+    let sub_items: Vec<String> =
+        serde_json::from_str(json_str).map_err(|e| format!("Failed to parse JSON: {}", e))?;
+
+    Ok(sub_items)
 }

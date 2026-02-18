@@ -14,11 +14,13 @@ pub struct Config {
     pub whisper_ggml_path: String,
     pub prompt: String,
     pub ollama_model: Option<String>,
+    pub ollama_embedding_model: Option<String>,
     pub ollama_min_chars: usize,
     pub min_confidence: f32,
     pub silence_threshold: f32,
     pub transcription_mode: String,
     pub whisper_language: String,
+    pub agenda_similarity_threshold: f32,
     pub error: Option<String>,
 }
 
@@ -109,6 +111,10 @@ TRANSCRIPTION_MODE=speed
 # 9. Whisper Language (Optional, Default: en)
 # Options: en, zh, pl, fr
 WHISPER_LANGUAGE=en
+
+# 10. Agenda Similarity Threshold (Optional, Default: 0.35)
+# Similarity score at which we trigger detailed LLM scoring for an agenda item.
+AGENDA_SIMILARITY_THRESHOLD=0.35
 "#;
             if let Err(e) = std::fs::write(&app_data_dir.join(".env"), default_env) {
                 println!("Warning: Failed to create .env template: {}", e);
@@ -173,6 +179,11 @@ WHISPER_LANGUAGE=en
 
         let whisper_language = env::var("WHISPER_LANGUAGE").unwrap_or_else(|_| "en".to_string());
 
+        let agenda_similarity_threshold = env::var("AGENDA_SIMILARITY_THRESHOLD")
+            .unwrap_or_else(|_| "0.35".to_string())
+            .parse::<f32>()
+            .unwrap_or(0.35);
+
         // Load prompt from file in App Data dir
         let mut prompt = String::new();
         let prompt_path = app_data_dir.join("prompt.txt");
@@ -196,11 +207,13 @@ WHISPER_LANGUAGE=en
             whisper_ggml_path,
             prompt,
             ollama_model,
+            ollama_embedding_model: env::var("OLLAMA_EMBEDDING_MODEL").ok(),
             ollama_min_chars,
             min_confidence,
             silence_threshold,
             transcription_mode,
             whisper_language,
+            agenda_similarity_threshold,
             error,
         })
     }
@@ -222,11 +235,13 @@ GEMINI_MODEL={}
 GLOBAL_HOTKEY={}
 BUFFER_DURATION_SECS={}
 OLLAMA_MODEL={}
+OLLAMA_EMBEDDING_MODEL={}
 OLLAMA_MIN_CHARS={}
 SILENCE_THRESHOLD={}
 TRANSCRIPTION_MODE={}
 MIN_CONFIDENCE={}
 WHISPER_LANGUAGE={}
+AGENDA_SIMILARITY_THRESHOLD={}
 "#,
             self.gemini_api_key,
             self.whisper_ggml_path,
@@ -234,11 +249,13 @@ WHISPER_LANGUAGE={}
             self.global_hotkey,
             self.buffer_duration_secs,
             self.ollama_model.as_deref().unwrap_or_default(),
+            self.ollama_embedding_model.as_deref().unwrap_or_default(),
             self.ollama_min_chars,
             self.silence_threshold,
             self.transcription_mode,
             self.min_confidence,
-            self.whisper_language
+            self.whisper_language,
+            self.agenda_similarity_threshold
         );
 
         std::fs::write(&env_path, env_content).map_err(|e| e.to_string())?;

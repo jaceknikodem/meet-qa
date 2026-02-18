@@ -88,7 +88,9 @@ You can manage settings directly in the app via the **Settings View** (accessibl
     -   `GLOBAL_HOTKEY`: The shortcut to trigger analysis (e.g., `Command+Shift+K`).
     -   `BUFFER_DURATION_SECS`: How many seconds of audio to keep in memory (default: 45).
     -   `OLLAMA_MODEL`: (Optional) Ollama model name for automatic agenda detection.
+    -   `OLLAMA_EMBEDDING_MODEL`: (Optional) Ollama model for relevance filtering (e.g., `nomic-embed-text`).
     -   `OLLAMA_MIN_CHARS`: (Optional) Min text length before auto-triggering agenda check.
+    -   `AGENDA_SIMILARITY_THRESHOLD`: (Optional) Cosine similarity threshold (0.0-1.0) for agenda matching (default: 0.35).
 2.  **`prompt.txt`**: The system instructions provided to Gemini.
 3.  **`logs/`**: A folder containing timestamped Markdown files of every meeting session.
 
