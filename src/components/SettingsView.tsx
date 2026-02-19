@@ -17,6 +17,12 @@ export interface AppConfig {
   whisper_language: string;
   silence_threshold: number;
   agenda_similarity_threshold: number;
+  transcription_interval_secs: number;
+  agenda_check_cooldown_secs: number;
+  cache_freshness_secs: number;
+  ollama_base_url: string;
+  whisper_threads: number;
+  min_analysis_chars: number;
   error?: string;
 }
 
@@ -335,149 +341,140 @@ export function SettingsView({ config, defaultMode, onDefaultModeChange, onSave,
                   />
                 </div>
               </div>
-            </div>
-
-            {/* Audio Device */}
-            <div className="space-y-2">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Audio Input Device
-              </label>
-              <div className="relative">
-                <select
-                  value={selectedDevice}
-                  onChange={(e) => handleDeviceChange(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-white appearance-none pr-8 cursor-pointer text-xs truncate"
-                >
-                  {audioDevices.map((device) => (
-                    <option key={device} value={device}>
-                      {device}
-                    </option>
-                  ))}
-                </select>
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-white/50">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
-                </div>
-              </div>
-            </div>
-
-            {/* Transcription Mode */}
-            <div className="space-y-2">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Transcription Mode
-              </label>
-              <div className="flex bg-black/40 p-1 rounded border border-white/10 w-fit">
-                <button
-                  onClick={() => handleChange("transcription_mode", "speed")}
-                  className={`px-4 py-1.5 rounded text-xs font-medium transition-all ${formData.transcription_mode === "speed"
-                    ? "bg-blue-600 text-white shadow-lg font-bold"
-                    : "text-gray-400 hover:text-white"
-                    }`}
-                >
-                  Speed
-                </button>
-                <button
-                  onClick={() => handleChange("transcription_mode", "accuracy")}
-                  className={`px-4 py-1.5 rounded text-xs font-medium transition-all ${formData.transcription_mode === "accuracy"
-                    ? "bg-blue-600 text-white shadow-lg font-bold"
-                    : "text-gray-400 hover:text-white"
-                    }`}
-                >
-                  Accuracy
-                </button>
-              </div>
-              <p className="text-[10px] text-gray-500">
-                {formData.transcription_mode === "accuracy"
-                  ? "Uses beam search (5 beams). Highly accurate but slower and uses more CPU."
-                  : "Uses greedy decoding. Maximum performance and low latency."}
-              </p>
-            </div>
-
-            {/* Whisper Language */}
-            <div className="space-y-2">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Whisper Language
-              </label>
-              <div className="relative w-fit min-w-[200px]">
-                <select
-                  value={formData.whisper_language || "en"}
-                  onChange={(e) => handleChange("whisper_language", e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-white appearance-none pr-8 cursor-pointer"
-                >
-                  <option value="en">English</option>
-                  <option value="zh">Chinese (Mandarin)</option>
-                  <option value="pl">Polish</option>
-                  <option value="fr">French</option>
-                </select>
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-white/50">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
-                </div>
-              </div>
-              <p className="text-[10px] text-gray-500">
-                The language model will prioritize this language for transcription.
-              </p>
-            </div>
-
-            {/* Detection Settings */}
-            <div className="space-y-4 border-t border-white/5 pt-4">
-              <h3 className="text-xs font-bold text-white/70 uppercase flex items-center gap-2">
-                Auto-Detection (Ollama)
-                {ollamaStatus === "checking" && <span className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>}
-                {ollamaStatus === "present" && <span className="w-2 h-2 rounded-full bg-green-500"></span>}
-                {ollamaStatus === "absent" && <span className="w-2 h-2 rounded-full bg-red-500"></span>}
-              </h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
-                    Ollama Model
-                  </label>
-                  {ollamaStatus === "absent" ? (
-                    <div className="px-3 py-2 bg-red-500/10 border border-red-500/20 rounded text-red-300 text-xs mt-1">
-                      Ollama not detected
-                    </div>
-                  ) : (
-                    <div className="relative">
-                      <select
-                        value={formData.ollama_model || ""}
-                        onChange={(e) => handleChange("ollama_model", e.target.value)}
-                        disabled={ollamaStatus !== "present"}
-                        className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-white appearance-none pr-8 disabled:opacity-50"
-                      >
-                        <option value="">Disabled</option>
-                        {ollamaModels.map(m => (
-                          <option key={m} value={m}>{m}</option>
-                        ))}
-                      </select>
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-white/50">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
-                    Min Chars
-                  </label>
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Update Interval (Secs)
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min="5"
+                    max="30"
+                    step="5"
+                    value={formData.transcription_interval_secs || 5}
+                    onChange={(e) =>
+                      handleChange("transcription_interval_secs", parseInt(e.target.value) || 5)
+                    }
+                    className="flex-1 h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  />
                   <input
                     type="number"
                     step="5"
-                    value={formData.ollama_min_chars || 50}
+                    min="5"
+                    max="30"
+                    value={formData.transcription_interval_secs || 5}
                     onChange={(e) =>
-                      handleChange("ollama_min_chars", parseInt(e.target.value) || 50)
+                      handleChange("transcription_interval_secs", parseInt(e.target.value) || 5)
                     }
-                    className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-white"
+                    className="w-20 bg-black/40 border border-white/10 rounded px-2 py-1 focus:outline-none focus:border-blue-500 transition-colors text-white text-xs font-mono"
                   />
                 </div>
               </div>
+            </div>
+          </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
-                    Ollama Embedding Model
-                  </label>
+          {/* Audio Device */}
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
+              Audio Input Device
+            </label>
+            <div className="relative">
+              <select
+                value={selectedDevice}
+                onChange={(e) => handleDeviceChange(e.target.value)}
+                className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-white appearance-none pr-8 cursor-pointer text-xs truncate"
+              >
+                {audioDevices.map((device) => (
+                  <option key={device} value={device}>
+                    {device}
+                  </option>
+                ))}
+              </select>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-white/50">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+              </div>
+            </div>
+          </div>
+
+          {/* Transcription Mode */}
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
+              Transcription Mode
+            </label>
+            <div className="flex bg-black/40 p-1 rounded border border-white/10 w-fit">
+              <button
+                onClick={() => handleChange("transcription_mode", "speed")}
+                className={`px-4 py-1.5 rounded text-xs font-medium transition-all ${formData.transcription_mode === "speed"
+                  ? "bg-blue-600 text-white shadow-lg font-bold"
+                  : "text-gray-400 hover:text-white"
+                  }`}
+              >
+                Speed
+              </button>
+              <button
+                onClick={() => handleChange("transcription_mode", "accuracy")}
+                className={`px-4 py-1.5 rounded text-xs font-medium transition-all ${formData.transcription_mode === "accuracy"
+                  ? "bg-blue-600 text-white shadow-lg font-bold"
+                  : "text-gray-400 hover:text-white"
+                  }`}
+              >
+                Accuracy
+              </button>
+            </div>
+            <p className="text-[10px] text-gray-500">
+              {formData.transcription_mode === "accuracy"
+                ? "Uses beam search (5 beams). Highly accurate but slower and uses more CPU."
+                : "Uses greedy decoding. Maximum performance and low latency."}
+            </p>
+          </div>
+
+          {/* Whisper Language */}
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
+              Whisper Language
+            </label>
+            <div className="relative w-fit min-w-[200px]">
+              <select
+                value={formData.whisper_language || "en"}
+                onChange={(e) => handleChange("whisper_language", e.target.value)}
+                className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-white appearance-none pr-8 cursor-pointer"
+              >
+                <option value="en">English</option>
+                <option value="zh">Chinese (Mandarin)</option>
+                <option value="pl">Polish</option>
+                <option value="fr">French</option>
+              </select>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-white/50">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+              </div>
+            </div>
+            <p className="text-[10px] text-gray-500">
+              The language model will prioritize this language for transcription.
+            </p>
+          </div>
+
+          {/* Detection Settings */}
+          <div className="space-y-4 border-t border-white/5 pt-4">
+            <h3 className="text-xs font-bold text-white/70 uppercase flex items-center gap-2">
+              Auto-Detection (Ollama)
+              {ollamaStatus === "checking" && <span className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>}
+              {ollamaStatus === "present" && <span className="w-2 h-2 rounded-full bg-green-500"></span>}
+              {ollamaStatus === "absent" && <span className="w-2 h-2 rounded-full bg-red-500"></span>}
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Ollama Model
+                </label>
+                {ollamaStatus === "absent" ? (
+                  <div className="px-3 py-2 bg-red-500/10 border border-red-500/20 rounded text-red-300 text-xs mt-1">
+                    Ollama not detected
+                  </div>
+                ) : (
                   <div className="relative">
                     <select
-                      value={formData.ollama_embedding_model || ""}
-                      onChange={(e) => handleChange("ollama_embedding_model", e.target.value)}
+                      value={formData.ollama_model || ""}
+                      onChange={(e) => handleChange("ollama_model", e.target.value)}
                       disabled={ollamaStatus !== "present"}
                       className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-white appearance-none pr-8 disabled:opacity-50"
                     >
@@ -490,92 +487,130 @@ export function SettingsView({ config, defaultMode, onDefaultModeChange, onSave,
                       <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
                     </div>
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
-                    Agenda Similarity Threshold
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.05"
-                      value={formData.agenda_similarity_threshold || 0.35}
-                      onChange={(e) =>
-                        handleChange("agenda_similarity_threshold", parseFloat(e.target.value) || 0.35)
-                      }
-                      className="flex-1 h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                    />
-                    <input
-                      type="number"
-                      step="0.05"
-                      min="0"
-                      max="1"
-                      value={formData.agenda_similarity_threshold || 0.35}
-                      onChange={(e) =>
-                        handleChange("agenda_similarity_threshold", parseFloat(e.target.value) || 0.35)
-                      }
-                      className="w-20 bg-black/40 border border-white/10 rounded px-2 py-1 focus:outline-none focus:border-blue-500 transition-colors text-white text-xs font-mono"
-                    />
+                )}
+              </div>
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Min Chars
+                </label>
+                <input
+                  type="number"
+                  step="5"
+                  value={formData.ollama_min_chars || 50}
+                  onChange={(e) =>
+                    handleChange("ollama_min_chars", parseInt(e.target.value) || 50)
+                  }
+                  className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-white"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Ollama Embedding Model
+                </label>
+                <div className="relative">
+                  <select
+                    value={formData.ollama_embedding_model || ""}
+                    onChange={(e) => handleChange("ollama_embedding_model", e.target.value)}
+                    disabled={ollamaStatus !== "present"}
+                    className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-white appearance-none pr-8 disabled:opacity-50"
+                  >
+                    <option value="">Disabled</option>
+                    {ollamaModels.map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-white/50">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
                   </div>
                 </div>
               </div>
-            </div>
-
-            {/* Global Hotkey */}
-            <div className="space-y-2 border-t border-white/5 pt-4">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Global Hotkey
-              </label>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="col-span-2">
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Agenda Similarity Threshold
+                </label>
+                <div className="flex items-center gap-3">
                   <input
-                    type="text"
-                    value={formData.global_hotkey || "Command+Shift+K"}
-                    onChange={(e) => handleChange("global_hotkey", e.target.value)}
-                    className={`w-full bg-black/40 border rounded px-3 py-2 focus:outline-none transition-colors text-white ${hotkeyValidation === 'invalid' ? 'border-red-500/50 focus:border-red-500' : 'border-white/10 focus:border-blue-500'
-                      }`}
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={formData.agenda_similarity_threshold || 0.35}
+                    onChange={(e) =>
+                      handleChange("agenda_similarity_threshold", parseFloat(e.target.value) || 0.35)
+                    }
+                    className="flex-1 h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
                   />
-                  {hotkeyValidation === 'invalid' ? (
-                    <p className="text-[10px] text-red-500 mt-1">Invalid hotkey format</p>
-                  ) : (
-                    <p className="text-[10px] text-gray-600 mt-1">Requires restart to apply.</p>
-                  )}
-                </div>
-                <div>
-                  <select
-                    value={defaultMode}
-                    onChange={(e) => onDefaultModeChange(e.target.value as any)}
-                    className="w-full bg-black/40 border border-white/10 rounded px-2 py-2 focus:outline-none focus:border-blue-500 transition-colors text-white text-sm"
-                  >
-                    <option value="answer">Answer</option>
-                    <option value="validate">Validate</option>
-                    <option value="followup">Follow-up</option>
-                  </select>
-                  <p className="text-[10px] text-gray-600 mt-1">Action on trigger</p>
+                  <input
+                    type="number"
+                    step="0.05"
+                    min="0"
+                    max="1"
+                    value={formData.agenda_similarity_threshold || 0.35}
+                    onChange={(e) =>
+                      handleChange("agenda_similarity_threshold", parseFloat(e.target.value) || 0.35)
+                    }
+                    className="w-20 bg-black/40 border border-white/10 rounded px-2 py-1 focus:outline-none focus:border-blue-500 transition-colors text-white text-xs font-mono"
+                  />
                 </div>
               </div>
             </div>
-
-            {/* Whisper Path */}
-            <div className="space-y-2">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Whisper GGML Path
-              </label>
-              <input
-                type="text"
-                value={formData.whisper_ggml_path || ""}
-                onChange={(e) => handleChange("whisper_ggml_path", e.target.value)}
-                className={`w-full bg-black/40 border rounded px-3 py-2 focus:outline-none transition-colors text-white/50 text-xs truncate ${pathValidation === 'invalid' ? 'border-red-500/50 focus:border-red-500' : 'border-white/10 focus:border-blue-500'
-                  }`}
-              />
-              {pathValidation === 'invalid' && <p className="text-[10px] text-red-500">File not found - Not Saved</p>}
-            </div>
-
           </div>
+
+          {/* Global Hotkey */}
+          <div className="space-y-2 border-t border-white/5 pt-4">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
+              Global Hotkey
+            </label>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="col-span-2">
+                <input
+                  type="text"
+                  value={formData.global_hotkey || "Command+Shift+K"}
+                  onChange={(e) => handleChange("global_hotkey", e.target.value)}
+                  className={`w-full bg-black/40 border rounded px-3 py-2 focus:outline-none transition-colors text-white ${hotkeyValidation === 'invalid' ? 'border-red-500/50 focus:border-red-500' : 'border-white/10 focus:border-blue-500'
+                    }`}
+                />
+                {hotkeyValidation === 'invalid' ? (
+                  <p className="text-[10px] text-red-500 mt-1">Invalid hotkey format</p>
+                ) : (
+                  <p className="text-[10px] text-gray-600 mt-1">Requires restart to apply.</p>
+                )}
+              </div>
+              <div>
+                <select
+                  value={defaultMode}
+                  onChange={(e) => onDefaultModeChange(e.target.value as any)}
+                  className="w-full bg-black/40 border border-white/10 rounded px-2 py-2 focus:outline-none focus:border-blue-500 transition-colors text-white text-sm"
+                >
+                  <option value="answer">Answer</option>
+                  <option value="validate">Validate</option>
+                  <option value="followup">Follow-up</option>
+                </select>
+                <p className="text-[10px] text-gray-600 mt-1">Action on trigger</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Whisper Path */}
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
+              Whisper GGML Path
+            </label>
+            <input
+              type="text"
+              value={formData.whisper_ggml_path || ""}
+              onChange={(e) => handleChange("whisper_ggml_path", e.target.value)}
+              className={`w-full bg-black/40 border rounded px-3 py-2 focus:outline-none transition-colors text-white/50 text-xs truncate ${pathValidation === 'invalid' ? 'border-red-500/50 focus:border-red-500' : 'border-white/10 focus:border-blue-500'
+                }`}
+            />
+            {pathValidation === 'invalid' && <p className="text-[10px] text-red-500">File not found - Not Saved</p>}
+          </div>
+
         </div>
       </div>
-    </div>
+    </div >
   );
 }

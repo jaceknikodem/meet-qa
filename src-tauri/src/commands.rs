@@ -9,10 +9,13 @@ use tauri_plugin_global_shortcut::Shortcut;
 
 #[tauri::command]
 pub fn transcribe_latest(audio_state: State<AudioState>) -> Result<String, String> {
-    // Check if background transcription is fresh (less than 12 seconds old)
+    // Check if background transcription is fresh
     {
+        let freshness = audio_state
+            .cache_freshness_secs
+            .load(std::sync::atomic::Ordering::Relaxed);
         let updated = audio_state.last_updated.lock().unwrap();
-        if updated.elapsed().as_secs() < 12 {
+        if updated.elapsed().as_secs() < freshness {
             let cached = audio_state.last_transcript.lock().unwrap();
             if !cached.is_empty() {
                 println!(
@@ -39,6 +42,9 @@ pub fn transcribe_latest(audio_state: State<AudioState>) -> Result<String, Strin
         audio_state.silence_threshold,
         &audio_state.transcription_mode.lock().unwrap(),
         &audio_state.whisper_language.lock().unwrap(),
+        audio_state
+            .whisper_threads
+            .load(std::sync::atomic::Ordering::Relaxed),
     )?;
 
     // Update cache
@@ -96,7 +102,9 @@ pub fn update_agenda(
     if let Some(model) = &config.ollama_embedding_model {
         for item in items.iter_mut() {
             if item.embedding.is_none() {
-                if let Ok(emb) = crate::audio::get_embedding(model, &item.text) {
+                if let Ok(emb) =
+                    crate::audio::get_embedding(model, &item.text, &config.ollama_base_url)
+                {
                     item.embedding = Some(emb);
                 } else {
                     eprintln!(
@@ -207,6 +215,18 @@ pub fn update_config(new_config: Config, audio_state: State<AudioState>) -> Resu
         *mode = new_config.transcription_mode.clone();
         let mut lang = audio_state.whisper_language.lock().unwrap();
         *lang = new_config.whisper_language.clone();
+        audio_state.transcription_interval_secs.store(
+            new_config.transcription_interval_secs,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        audio_state.agenda_check_cooldown_secs.store(
+            new_config.agenda_check_cooldown_secs,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        audio_state.cache_freshness_secs.store(
+            new_config.cache_freshness_secs,
+            std::sync::atomic::Ordering::Relaxed,
+        );
     }
 
     new_config.save().map_err(|e| e.to_string())?;

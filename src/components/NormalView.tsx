@@ -64,7 +64,8 @@ export function NormalView({
 
         const unlistenStatus = listen<string>("agenda-status", (event) => {
             setAgendaStatus(event.payload);
-            setTimeout(() => setAgendaStatus(""), 12000);
+            const timeout = (config?.cache_freshness_secs || 12) * 1000;
+            setTimeout(() => setAgendaStatus(""), timeout);
         });
 
         return () => {

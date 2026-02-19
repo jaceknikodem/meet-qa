@@ -139,14 +139,16 @@ function App() {
         return;
       }
 
-      if (text.trim().length < 25) {
+      const activeConfig = configRef.current || await invoke<AppConfig>("get_config");
+      const minChars = activeConfig.min_analysis_chars || 25;
+
+      if (text.trim().length < minChars) {
         setResponse({ cleaned_question: "", answer: "Transcript too short for meaningful analysis.", confidence: 0 });
         setIsLoading(false);
         return;
       }
 
       // 2. Gemini Streaming
-      const activeConfig = configRef.current || await invoke<AppConfig>("get_config");
       if (!configRef.current) setConfig(activeConfig);
 
       setResponse(null);
@@ -261,6 +263,16 @@ function App() {
     });
     return () => {
       unlistenVolume.then(f => f());
+    };
+  }, []);
+
+  // Live Transcription Listener
+  useEffect(() => {
+    const unlistenLive = listen<string>("live-transcript", (event) => {
+      setTranscript(event.payload);
+    });
+    return () => {
+      unlistenLive.then(f => f());
     };
   }, []);
 

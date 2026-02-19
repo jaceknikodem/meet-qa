@@ -21,6 +21,13 @@ pub struct Config {
     pub transcription_mode: String,
     pub whisper_language: String,
     pub agenda_similarity_threshold: f32,
+    pub transcription_interval_secs: u64,
+    pub agenda_check_cooldown_secs: u64,
+    pub cache_freshness_secs: u64,
+    pub ollama_base_url: String,
+    pub whisper_threads: usize,
+    pub min_analysis_chars: usize,
+    pub agenda_answered_threshold: f32,
     pub error: Option<String>,
 }
 
@@ -115,6 +122,32 @@ WHISPER_LANGUAGE=en
 # 10. Agenda Similarity Threshold (Optional, Default: 0.35)
 # Similarity score at which we trigger detailed LLM scoring for an agenda item.
 AGENDA_SIMILARITY_THRESHOLD=0.35
+
+# 11. Transcription Interval in seconds (Optional, Default: 5)
+# How often to run the background transcription.
+TRANSCRIPTION_INTERVAL_SECS=5
+
+# 12. Agenda Check Cooldown in seconds (Optional, Default: 20)
+# Minimum time between agenda updates to save CPU.
+AGENDA_CHECK_COOLDOWN_SECS=20
+
+# 13. Cache Freshness in seconds (Optional, Default: 12)
+# How old the cached transcript can be before we re-transcribe.
+CACHE_FRESHNESS_SECS=12
+
+# 14. Ollama Base URL (Optional, Default: http://localhost:11434)
+OLLAMA_BASE_URL=http://localhost:11434
+
+# 15. Whisper Threads (Optional, Default: 8)
+WHISPER_THREADS=8
+
+# 16. Min Analysis Chars (Optional, Default: 25)
+# Minimum length of transcript required to trigger Gemini analysis.
+MIN_ANALYSIS_CHARS=25
+
+# 17. Agenda Answered Threshold (Optional, Default: 0.95)
+# Score at which an agenda item is considered "answered".
+AGENDA_ANSWERED_THRESHOLD=0.95
 "#;
             if let Err(e) = std::fs::write(&app_data_dir.join(".env"), default_env) {
                 println!("Warning: Failed to create .env template: {}", e);
@@ -184,6 +217,39 @@ AGENDA_SIMILARITY_THRESHOLD=0.35
             .parse::<f32>()
             .unwrap_or(0.35);
 
+        let transcription_interval_secs = env::var("TRANSCRIPTION_INTERVAL_SECS")
+            .unwrap_or_else(|_| "5".to_string())
+            .parse::<u64>()
+            .unwrap_or(5);
+
+        let agenda_check_cooldown_secs = env::var("AGENDA_CHECK_COOLDOWN_SECS")
+            .unwrap_or_else(|_| "20".to_string())
+            .parse::<u64>()
+            .unwrap_or(20);
+
+        let cache_freshness_secs = env::var("CACHE_FRESHNESS_SECS")
+            .unwrap_or_else(|_| "12".to_string())
+            .parse::<u64>()
+            .unwrap_or(12);
+
+        let ollama_base_url =
+            env::var("OLLAMA_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
+
+        let whisper_threads = env::var("WHISPER_THREADS")
+            .unwrap_or_else(|_| "8".to_string())
+            .parse::<usize>()
+            .unwrap_or(8);
+
+        let min_analysis_chars = env::var("MIN_ANALYSIS_CHARS")
+            .unwrap_or_else(|_| "25".to_string())
+            .parse::<usize>()
+            .unwrap_or(25);
+
+        let agenda_answered_threshold = env::var("AGENDA_ANSWERED_THRESHOLD")
+            .unwrap_or_else(|_| "0.95".to_string())
+            .parse::<f32>()
+            .unwrap_or(0.95);
+
         // Load prompt from file in App Data dir
         let mut prompt = String::new();
         let prompt_path = app_data_dir.join("prompt.txt");
@@ -214,6 +280,13 @@ AGENDA_SIMILARITY_THRESHOLD=0.35
             transcription_mode,
             whisper_language,
             agenda_similarity_threshold,
+            transcription_interval_secs,
+            agenda_check_cooldown_secs,
+            cache_freshness_secs,
+            ollama_base_url,
+            whisper_threads,
+            min_analysis_chars,
+            agenda_answered_threshold,
             error,
         })
     }
@@ -242,6 +315,13 @@ TRANSCRIPTION_MODE={}
 MIN_CONFIDENCE={}
 WHISPER_LANGUAGE={}
 AGENDA_SIMILARITY_THRESHOLD={}
+TRANSCRIPTION_INTERVAL_SECS={}
+AGENDA_CHECK_COOLDOWN_SECS={}
+CACHE_FRESHNESS_SECS={}
+OLLAMA_BASE_URL={}
+WHISPER_THREADS={}
+MIN_ANALYSIS_CHARS={}
+AGENDA_ANSWERED_THRESHOLD={}
 "#,
             self.gemini_api_key,
             self.whisper_ggml_path,
@@ -255,7 +335,14 @@ AGENDA_SIMILARITY_THRESHOLD={}
             self.transcription_mode,
             self.min_confidence,
             self.whisper_language,
-            self.agenda_similarity_threshold
+            self.agenda_similarity_threshold,
+            self.transcription_interval_secs,
+            self.agenda_check_cooldown_secs,
+            self.cache_freshness_secs,
+            self.ollama_base_url,
+            self.whisper_threads,
+            self.min_analysis_chars,
+            self.agenda_answered_threshold
         );
 
         std::fs::write(&env_path, env_content).map_err(|e| e.to_string())?;

@@ -38,6 +38,12 @@ pub struct AudioState {
     pub device_name: Arc<Mutex<String>>,
     pub stream_guard: Arc<Mutex<Option<SafeStream>>>,
     pub max_samples: usize,
+    pub transcription_interval_secs: Arc<std::sync::atomic::AtomicU64>,
+    pub agenda_check_cooldown_secs: Arc<std::sync::atomic::AtomicU64>,
+    pub cache_freshness_secs: Arc<std::sync::atomic::AtomicU64>,
+    pub ollama_base_url: Arc<Mutex<String>>,
+    pub whisper_threads: Arc<std::sync::atomic::AtomicUsize>,
+    pub agenda_answered_threshold: f32,
 }
 
 impl AudioState {
@@ -96,6 +102,18 @@ impl AudioState {
             device_name,
             stream_guard,
             max_samples,
+            transcription_interval_secs: Arc::new(std::sync::atomic::AtomicU64::new(
+                config.transcription_interval_secs,
+            )),
+            agenda_check_cooldown_secs: Arc::new(std::sync::atomic::AtomicU64::new(
+                config.agenda_check_cooldown_secs,
+            )),
+            cache_freshness_secs: Arc::new(std::sync::atomic::AtomicU64::new(
+                config.cache_freshness_secs,
+            )),
+            ollama_base_url: Arc::new(Mutex::new(config.ollama_base_url.clone())),
+            whisper_threads: Arc::new(std::sync::atomic::AtomicUsize::new(config.whisper_threads)),
+            agenda_answered_threshold: config.agenda_answered_threshold,
         };
 
         audio_state.spawn_worker(config, app_handle.clone());
@@ -258,26 +276,23 @@ impl AudioState {
         let whisper_language_bg = self.whisper_language.clone();
         let agenda_bg = self.agenda.clone();
         let similarity_threshold = config.agenda_similarity_threshold;
+        let transcription_interval_secs_bg = self.transcription_interval_secs.clone();
+        let agenda_check_cooldown_secs_bg = self.agenda_check_cooldown_secs.clone();
+        let ollama_base_url_bg = self.ollama_base_url.clone();
+        let whisper_threads_bg = self.whisper_threads.clone();
+        let agenda_answered_threshold = self.agenda_answered_threshold;
 
         std::thread::spawn(move || {
             let mut last_detected_text = String::new();
+            let mut last_agenda_check = std::time::Instant::now();
 
             loop {
-                std::thread::sleep(std::time::Duration::from_secs(10));
+                let interval =
+                    transcription_interval_secs_bg.load(std::sync::atomic::Ordering::Relaxed);
+                std::thread::sleep(std::time::Duration::from_secs(interval));
 
-                if detect_model.is_none()
-                    || !is_recording_bg.load(std::sync::atomic::Ordering::Relaxed)
-                {
+                if !is_recording_bg.load(std::sync::atomic::Ordering::Relaxed) {
                     continue;
-                }
-
-                // Skip if agenda is empty
-                {
-                    let agenda = agenda_bg.lock().unwrap();
-                    if agenda.is_empty() {
-                        let _ = app_handle.emit("agenda-status", "Empty agenda");
-                        continue;
-                    }
                 }
 
                 let samples: Vec<f32> = {
@@ -295,11 +310,33 @@ impl AudioState {
                     silence_threshold,
                     &transcription_mode_bg.lock().unwrap(),
                     &whisper_language_bg.lock().unwrap(),
+                    whisper_threads_bg.load(std::sync::atomic::Ordering::Relaxed),
                 ) {
                     let mut t_guard = transcript_bg.lock().unwrap();
                     let mut u_guard = updated_bg.lock().unwrap();
                     *t_guard = text.clone();
                     *u_guard = std::time::Instant::now();
+
+                    // Emit live transcript for UI
+                    let _ = app_handle.emit("live-transcript", text.clone());
+
+                    // From here on, logic depends on Ollama and Agenda
+                    // Cooldown: avoid spamming Ollama
+                    let cooldown =
+                        agenda_check_cooldown_secs_bg.load(std::sync::atomic::Ordering::Relaxed);
+                    if detect_model.is_none() || last_agenda_check.elapsed().as_secs() < cooldown {
+                        continue;
+                    }
+                    last_agenda_check = std::time::Instant::now();
+
+                    // Skip if agenda is empty
+                    {
+                        let agenda = agenda_bg.lock().unwrap();
+                        if agenda.is_empty() {
+                            let _ = app_handle.emit("agenda-status", "Empty agenda");
+                            continue;
+                        }
+                    }
 
                     if let Some(model) = &detect_model {
                         if text.is_empty() {
@@ -338,6 +375,8 @@ impl AudioState {
                                         &mut agenda_items,
                                         embedding_model.as_deref(),
                                         similarity_threshold,
+                                        &ollama_base_url_bg.lock().unwrap(),
+                                        agenda_answered_threshold,
                                     );
                                     if !updates.is_empty() {
                                         agenda_updates = updates;
@@ -396,15 +435,16 @@ struct OllamaEmbeddingResponse {
     embedding: Vec<f32>,
 }
 
-pub fn get_embedding(model: &str, text: &str) -> Result<Vec<f32>, String> {
+pub fn get_embedding(model: &str, text: &str, base_url: &str) -> Result<Vec<f32>, String> {
     let client = reqwest::blocking::Client::new();
     let req = OllamaEmbeddingRequest {
         model: model.to_string(),
         prompt: text.to_string(),
     };
 
+    let url = format!("{}/api/embeddings", base_url.trim_end_matches('/'));
     let resp = client
-        .post("http://localhost:11434/api/embeddings")
+        .post(url)
         .json(&req)
         .send()
         .map_err(|e| e.to_string())?;
@@ -436,12 +476,14 @@ fn score_agenda_items(
     items: &mut [AgendaItem],
     embedding_model: Option<&str>,
     similarity_threshold: f32,
+    base_url: &str,
+    answered_threshold: f32,
 ) -> Vec<String> {
     let mut updates = Vec::new();
 
     // 1. Get embedding for current text if possible
     let text_embedding = if let Some(emb_model) = embedding_model {
-        get_embedding(emb_model, text).ok()
+        get_embedding(emb_model, text, base_url).ok()
     } else {
         None
     };
@@ -449,7 +491,7 @@ fn score_agenda_items(
     let client = reqwest::blocking::Client::new();
 
     for item in items.iter_mut() {
-        if item.status == "answered" && item.score >= 0.95 {
+        if item.status == "answered" && item.score >= answered_threshold {
             continue;
         }
 
@@ -505,11 +547,8 @@ fn score_agenda_items(
             stream: false,
         };
 
-        if let Ok(resp) = client
-            .post("http://localhost:11434/api/generate")
-            .json(&req)
-            .send()
-        {
+        let url = format!("{}/api/generate", base_url.trim_end_matches('/'));
+        if let Ok(resp) = client.post(url).json(&req).send() {
             if let Ok(ollama_resp) = resp.json::<OllamaResponse>() {
                 let json_str = ollama_resp.response.trim();
                 if let Some(start) = json_str.find('{') {
@@ -686,6 +725,7 @@ pub fn run_transcription(
     threshold: f32,
     mode: &str,
     language: &str,
+    threads: usize,
 ) -> Result<String, String> {
     let mut params = if mode == "accuracy" {
         FullParams::new(SamplingStrategy::BeamSearch {
@@ -696,8 +736,8 @@ pub fn run_transcription(
         FullParams::new(SamplingStrategy::Greedy { best_of: 1 })
     };
 
-    // Performance: Use more threads for Mac (8 is usually safe for M-series)
-    params.set_n_threads(8);
+    // Performance: Use configured threads
+    params.set_n_threads(threads as i32);
 
     // Language setting
     params.set_language(Some(language));

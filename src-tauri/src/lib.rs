@@ -34,6 +34,13 @@ pub fn run() {
             transcription_mode: "speed".to_string(),
             whisper_language: "en".to_string(),
             agenda_similarity_threshold: 0.35,
+            transcription_interval_secs: 5,
+            agenda_check_cooldown_secs: 20,
+            cache_freshness_secs: 12,
+            ollama_base_url: "http://localhost:11434".to_string(),
+            whisper_threads: 8,
+            min_analysis_chars: 25,
+            agenda_answered_threshold: 0.95,
             error: Some(e),
          };
          c
