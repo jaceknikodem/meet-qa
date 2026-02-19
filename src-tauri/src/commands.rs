@@ -1,5 +1,7 @@
-use crate::audio::{run_transcription, AgendaItem, AudioState};
+use crate::agenda::AgendaItem;
+use crate::audio::AudioState;
 use crate::config::Config;
+use crate::transcription::run_transcription;
 use crate::SessionState;
 use chrono::Local;
 use std::fs::OpenOptions;
@@ -103,7 +105,7 @@ pub fn update_agenda(
         for item in items.iter_mut() {
             if item.embedding.is_none() {
                 if let Ok(emb) =
-                    crate::audio::get_embedding(model, &item.text, &config.ollama_base_url)
+                    crate::agenda::get_embedding(model, &item.text, &config.ollama_base_url)
                 {
                     item.embedding = Some(emb);
                 } else {
